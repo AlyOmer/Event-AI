@@ -27,7 +27,7 @@
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 2. Write preservation property tests (BEFORE implementing fix)
+- [~] 2. Write preservation property tests (BEFORE implementing fix)
   - **Property 2: Preservation** - Other Port Configurations Unchanged
   - **IMPORTANT**: Follow observation-first methodology
   - Observe behavior on UNFIXED code for non-buggy inputs (other portals and services)
@@ -65,7 +65,7 @@
   - Mark task complete when tests are written, run, and passing on unfixed code
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [ ] 3. Fix OAuth redirect port configuration
+- [~] 3. Fix OAuth redirect port configuration
 
   - [ ] 3.1 Update FRONTEND_URL in backend .env file
     - Open `packages/backend/.env`
@@ -125,7 +125,7 @@
     - Confirm all tests still pass after fix (no regressions)
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [ ] 4. Checkpoint - Ensure all tests pass
+- [~] 4. Checkpoint - Ensure all tests pass
   - Verify the bug condition exploration test passes (OAuth redirects to correct port 3000)
   - Verify all preservation tests pass (other portals and services unchanged)
   - Test the full OAuth flow end-to-end:
