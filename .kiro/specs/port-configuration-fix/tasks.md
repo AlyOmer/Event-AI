@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. Write bug condition exploration test
+- [x] 1. Write bug condition exploration test
   - **Property 1: Bug Condition** - OAuth Redirect Port Mismatch
   - **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists
   - **DO NOT attempt to fix the test or the code when it fails**
@@ -27,7 +27,7 @@
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [~] 2. Write preservation property tests (BEFORE implementing fix)
+- [x] 2. Write preservation property tests (BEFORE implementing fix)
   - **Property 2: Preservation** - Other Port Configurations Unchanged
   - **IMPORTANT**: Follow observation-first methodology
   - Observe behavior on UNFIXED code for non-buggy inputs (other portals and services)
@@ -65,9 +65,9 @@
   - Mark task complete when tests are written, run, and passing on unfixed code
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [~] 3. Fix OAuth redirect port configuration
+- [x] 3. Fix OAuth redirect port configuration
 
-  - [ ] 3.1 Update FRONTEND_URL in backend .env file
+  - [x] 3.1 Update FRONTEND_URL in backend .env file
     - Open `packages/backend/.env`
     - Locate the line `FRONTEND_URL=http://localhost:3001`
     - Change the value to `FRONTEND_URL=http://localhost:3000`
@@ -78,7 +78,7 @@
     - _Preservation: User portal (3003), admin portal (3002), backend API (5000), orchestrator (8000), CORS origins, and Google OAuth callback URI remain unchanged_
     - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-  - [ ] 3.2 Verify frontend vendor portal port configuration
+  - [x] 3.2 Verify frontend vendor portal port configuration
     - Open `packages/frontend/package.json`
     - Locate the `"dev"` script in the `"scripts"` section
     - Verify it is set to `"next dev"` (no explicit port, defaults to 3000)
@@ -86,7 +86,7 @@
     - Save the file if changes were made
     - _Requirements: 2.2_
 
-  - [ ] 3.3 Verify other port configurations are correct
+  - [x] 3.3 Verify other port configurations are correct
     - Open `packages/backend/.env`
     - Verify `PORT=3001` is set correctly (this should actually be 5000 for the backend API - verify and correct if needed)
     - Verify `CORS_ORIGINS` includes `"http://localhost:3000"` in the array
@@ -96,7 +96,7 @@
     - Document any discrepancies found
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-  - [ ] 3.4 Verify bug condition exploration test now passes
+  - [x] 3.4 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - OAuth Redirect to Correct Port
     - **IMPORTANT**: Re-run the SAME test from task 1 - do NOT write a new test
     - The test from task 1 encodes the expected behavior
@@ -111,7 +111,7 @@
     - **EXPECTED OUTCOME**: Test PASSES (confirms bug is fixed)
     - _Requirements: 2.1, 2.2, 2.3_
 
-  - [ ] 3.5 Verify preservation tests still pass
+  - [x] 3.5 Verify preservation tests still pass
     - **Property 2: Preservation** - Other Port Configurations Unchanged
     - **IMPORTANT**: Re-run the SAME tests from task 2 - do NOT write new tests
     - Run all preservation test cases from task 2:
@@ -125,7 +125,7 @@
     - Confirm all tests still pass after fix (no regressions)
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
 
-- [~] 4. Checkpoint - Ensure all tests pass
+- [x] 4. Checkpoint - Ensure all tests pass
   - Verify the bug condition exploration test passes (OAuth redirects to correct port 3000)
   - Verify all preservation tests pass (other portals and services unchanged)
   - Test the full OAuth flow end-to-end:
