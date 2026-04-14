@@ -1,0 +1,33 @@
+# Development override — hot reload, no resource limits, debug ports
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  backend:
+    build:
+      target: builder          # stop at builder stage — has uv + dev tools
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./packages/backend/src:/app/src:ro      # live source reload
+      - ./packages/backend/alembic:/app/alembic:ro
+    command: >
+      uvicorn src.main:app
+      --host 0.0.0.0
+      --port 5000
+      --reload
+      --reload-dir /app/src
+    deploy:
+      resources: {}            # no limits in dev
+
+  frontend:
+    build:
+      target: deps             # stop at deps stage — has node_modules
+    environment:
+      NODE_ENV: development
+    volumes:
+      - ./packages/frontend/src:/app/src:ro
+      - ./packages/frontend/public:/app/public:ro
+    command: pnpm dev
+    deploy:
+      resources: {}

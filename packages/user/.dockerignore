@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.next/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Dev files
+*.md
+*.txt
+coverage/
+__tests__/

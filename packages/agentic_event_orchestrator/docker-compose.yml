@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  orchestrator:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - VENDOR_PORTAL_API_URL=http://host.docker.internal:3000/api/v1
+    volumes:
+      - .:/app

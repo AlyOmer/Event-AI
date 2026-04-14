@@ -1,0 +1,13 @@
+**/.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.next
+**/dist
+**/out
+**/*.log
+**/.env
+**/.env.*
+**/coverage
+**/testsprite_tests

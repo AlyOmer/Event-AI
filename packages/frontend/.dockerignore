@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+.env
+.env.*
+*.log
+.vscode/
+.idea/
+.DS_Store
+.git/
+*.md
+coverage/
+__tests__/

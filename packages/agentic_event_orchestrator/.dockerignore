@@ -1,0 +1,29 @@
+# Virtual environments
+.venv/
+venv/
+__pycache__/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Dev/test files
+*.md
+*.txt
+test_*.py
+.chainlit/

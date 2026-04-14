@@ -1,0 +1,36 @@
+[project]
+name = "agentic-event-orchestrator"
+version = "0.1.0"
+description = "AI Agent Orchestrator for Event Management"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "openai-agents",
+    "openai",
+    "httpx",
+    "asyncpg>=0.31.0",
+    "sqlmodel>=0.0.38",
+    "alembic>=1.18.4",
+    "pydantic>=2.0",
+    "pydantic-settings",
+    "pyyaml>=6.0",
+    "sse-starlette>=1.6.1",
+    "mem0ai",
+    "scikit-learn>=1.4.0",
+    # sentence-transformers is optional (Layer 5 semantic similarity)
+    # adds ~80MB model download on first use, CPU-only, no CUDA needed
+    # "sentence-transformers>=3.0.0",
+    # llamafirewall excluded — requires torch/CUDA (~2GB). Regex+heuristic layers active instead.
+    # Re-add when running on GPU-enabled infra: "llamafirewall>=0.1.0"
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "pytest-asyncio",
+    "respx",
+    "hypothesis",
+    "ruff",
+]

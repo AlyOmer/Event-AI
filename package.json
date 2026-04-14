@@ -1,0 +1,40 @@
+{
+    "name": "event-ai",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Event-AI - Intelligent Event Planning Platform",
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev",
+        "dev:backend": "turbo run dev --filter=@event-ai/backend",
+        "dev:user": "turbo run dev --filter=@event-ai/user",
+        "dev:admin": "turbo run dev --filter=@event-ai/admin",
+        "dev:vendor": "turbo run dev --filter=@event-ai/vendor",
+        "lint": "turbo run lint",
+        "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+        "db:up": "docker compose up -d postgres redis",
+        "db:down": "docker compose down",
+        "db:migrate": "pnpm --filter @event-ai/backend run migrate:deploy",
+        "db:migrate:dev": "pnpm --filter @event-ai/backend run migrate:dev",
+        "db:studio": "pnpm --filter @event-ai/backend run studio",
+        "db:reset": "npm run db:down && npm run db:up && node -e \"setTimeout(()=>{},5000)\" && npm run db:migrate",
+        "db:reset:nodocker": "pnpm --filter @event-ai/backend run db:reset",
+        "setup": "pnpm install && npm run db:up && npm run db:migrate",
+        "setup:nodocker": "pnpm install && npm run db:migrate",
+        "clean": "turbo run clean && rimraf node_modules",
+        "typecheck": "turbo run typecheck"
+    },
+    "devDependencies": {
+        "concurrently": "^9.2.1",
+        "prettier": "^3.8.1",
+        "rimraf": "^6.0.0",
+        "turbo": "latest"
+    },
+    "engines": {
+        "node": ">=20.0.0"
+    },
+    "packageManager": "pnpm@9.0.0",
+    "overrides": {
+        "nodemailer": "7.0.13"
+    }
+}
