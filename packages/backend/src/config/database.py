@@ -54,8 +54,16 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             if v.startswith("postgresql://"):
                 v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
-            if "?" in v:
-                v = v.split("?")[0]
+            elif v.startswith("postgres://"):
+                v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+            # Strip sslmode — asyncpg doesn't accept it as a query param.
+            # SSL is passed via connect_args on the engine instead.
+            from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+            parsed = urlparse(v)
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            params.pop("sslmode", None)
+            new_query = urlencode({k: val[0] for k, val in params.items()})
+            v = urlunparse(parsed._replace(query=new_query))
         return v
 
     @field_validator("cors_origins", mode="before")
@@ -71,16 +79,28 @@ def get_settings() -> Settings:
     return Settings()
 
 # Global database resources config
+_settings = get_settings()
+_ssl_required = "sslmode=require" in (
+    # Check original env value before validator strips it
+    _settings.database_url or ""
+)
+# For Neon/Supabase, always use SSL since the URL originally had sslmode=require
+# We detect this by checking if the URL is a cloud host
+_db_url = _settings.database_url
+_use_ssl = any(host in _db_url for host in ["neon.tech", "supabase.co", "supabase.com", "amazonaws.com"])
+_connect_args = {"ssl": "require"} if _use_ssl else {}
+
 engine = create_async_engine(
-    get_settings().database_url,
+    _db_url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    echo=False
+    echo=False,
+    connect_args=_connect_args,
 )
 
 async_session_maker = sessionmaker(
-    bind=engine, # type: ignore
+    bind=engine,  # type: ignore
     class_=AsyncSession,
     expire_on_commit=False
 )

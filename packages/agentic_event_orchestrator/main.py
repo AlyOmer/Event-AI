@@ -6,12 +6,20 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from agents import OpenAIChatCompletionsModel
+from agents import set_tracing_disabled
+from agents.extensions.models.litellm_model import LitellmModel
 from agents.run import RunConfig
 
 from config.settings import get_settings
+
+# ── Logging — DEBUG for our routers so stream events are visible ──
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logging.getLogger("routers.chat").setLevel(logging.DEBUG)
+logging.getLogger("services.chat_service").setLevel(logging.DEBUG)
 
 logger = logging.getLogger(__name__)
 
@@ -38,22 +46,17 @@ async def lifespan(app: FastAPI):
     # Shared HTTP client
     http_client = httpx.AsyncClient(timeout=30.0)
 
-    # LLM client (Gemini via OpenAI-compatible API)
-    llm_client = AsyncOpenAI(
-        api_key=settings.gemini_api_key,
-        base_url=settings.gemini_base_url,
-    )
+    # Disable tracing — no OpenAI key, Gemini via LiteLLM
+    set_tracing_disabled(True)
 
-    # Model + RunConfig — tracing_disabled prevents SDK calling OpenAI tracing (would 401 with Gemini key)
-    model = OpenAIChatCompletionsModel(
-        model=settings.gemini_model,
-        openai_client=llm_client,
+    # Model via LiteLLM — routes gemini/... to Google AI using GEMINI_API_KEY
+    import os
+    os.environ.setdefault("GEMINI_API_KEY", settings.gemini_api_key)
+    model = LitellmModel(
+        model=f"gemini/{settings.gemini_model}",
+        api_key=settings.gemini_api_key,
     )
-    run_config = RunConfig(
-        model=model,
-        model_provider=llm_client,
-        tracing_disabled=True,
-    )
+    run_config = RunConfig(model=model)
 
     # Canary token — generated at startup, never stored in .env or any file
     canary_token = str(uuid.uuid4())
@@ -81,7 +84,6 @@ async def lifespan(app: FastAPI):
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.http_client = http_client
-    app.state.llm_client = llm_client
     app.state.model = model
     app.state.run_config = run_config
     app.state.canary_token = canary_token

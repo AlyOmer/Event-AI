@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, Column
+from sqlalchemy import String, DateTime, Enum as SAEnum
 
 
 class FeedbackRating(str, Enum):
@@ -17,6 +18,9 @@ class MessageFeedback(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     message_id: uuid.UUID = Field(foreign_key="ai.messages.id", index=True)
     user_id: uuid.UUID = Field(index=True)
-    rating: FeedbackRating
+    rating: str = Field(sa_column=Column("rating", String(10), nullable=False))
     comment: Optional[str] = Field(default=None, max_length=1000)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column("created_at", DateTime(timezone=True), nullable=False),
+    )

@@ -51,14 +51,15 @@ class ChatResponse(BaseModel):
 # ── Auth helper ───────────────────────────────────────────────────
 
 def _get_user_id(request: Request) -> str:
-    """Extract user_id from JWT or X-User-Id header. Returns 'anonymous' if not found."""
+    """Extract user_id from JWT or X-User-Id header. Returns a UUID-compatible string."""
     user_id = request.headers.get("X-User-Id", "")
     if not user_id:
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             import hashlib
-            user_id = hashlib.sha256(auth[7:].encode()).hexdigest()[:16]
-    return user_id or "anonymous"
+            # Use full 32-char hex digest so it's a valid UUID format
+            user_id = hashlib.sha256(auth[7:].encode()).hexdigest()[:32]
+    return user_id or "0" * 32
 
 
 # ── POST /api/v1/ai/chat — non-streaming ─────────────────────────
@@ -102,7 +103,7 @@ async def chat(
 
     # 4. Build conversation history
     history_msgs = await _chat_service.get_session_messages(db, chat_session.id, limit=6)
-    history = [{"role": m.role.value, "content": m.content} for m in history_msgs]
+    history = [{"role": m.role if isinstance(m.role, str) else m.role.value, "content": m.content} for m in history_msgs]
 
     # 5. Build sandwiched agent input
     canary_token = getattr(request.app.state, "canary_token", "")
@@ -214,7 +215,7 @@ async def chat_stream(
     memory_svc = MemoryService(api_key=settings.mem0_api_key)
     memory_context = await memory_svc.get_user_memory(user_id)
     history_msgs = await _chat_service.get_session_messages(db, chat_session.id, limit=6)
-    history = [{"role": m.role.value, "content": m.content} for m in history_msgs]
+    history = [{"role": m.role if isinstance(m.role, str) else m.role.value, "content": m.content} for m in history_msgs]
     canary_token = getattr(request.app.state, "canary_token", "")
     agent_input = build_agent_input(safe_message, memory_context, history, canary_token, firewall)
 
@@ -230,25 +231,65 @@ async def chat_stream(
         start = time.monotonic()
 
         try:
-            async with Runner.run_streamed(triage_agent, agent_input, run_config=run_config) as stream:
-                async for event in stream:
-                    # Check for client disconnect
-                    if await request.is_disconnected():
-                        logger.info("Client disconnected mid-stream")
-                        break
+            stream = Runner.run_streamed(triage_agent, agent_input, run_config=run_config)
+            async for event in stream.stream_events():
+                # Check for client disconnect
+                if await request.is_disconnected():
+                    logger.info("Client disconnected mid-stream")
+                    break
 
-                    event_type = getattr(event, "type", None)
+                event_type = getattr(event, "type", None)
+                # ── DEBUG ──────────────────────────────────────────────────
+                logger.debug("[STREAM] event_type=%s event=%r", event_type, event)
+                # ── END DEBUG ──────────────────────────────────────────────
 
-                    if event_type == "raw_response_event":
-                        delta = getattr(getattr(event, "data", None), "delta", None)
-                        if delta and hasattr(delta, "content"):
-                            for block in (delta.content or []):
-                                text = getattr(block, "text", None)
+                if event_type == "raw_response_event":
+                    data = getattr(event, "data", None)
+                    delta = getattr(data, "delta", None)
+                    logger.debug("[STREAM] raw data=%r delta=%r delta.content=%r",
+                                 data, delta, getattr(delta, "content", "NO_CONTENT"))
+                    text = None
+
+                    if delta is not None:
+                        # Chat Completions path (LiteLLM): delta.content is a plain string
+                        if isinstance(getattr(delta, "content", None), str):
+                            text = delta.content or None
+                        # Responses API path (OpenAI native): delta.content is a list of blocks
+                        elif hasattr(delta, "content") and isinstance(delta.content, list):
+                            for block in delta.content:
+                                block_text = getattr(block, "text", None)
+                                if block_text:
+                                    text = (text or "") + block_text
+
+                    if text:
+                        full_response.append(text)
+                        stream_buffer += text
+
+                        # Check stream buffer for leaks (first 500 chars)
+                        if not buffer_checked and len(stream_buffer) >= 500:
+                            buffer_checked = True
+                            if leak_detector and leak_detector.scan_stream_buffer(stream_buffer[:500]):
+                                yield {"data": json.dumps({"token": "I encountered an issue. Please try again.", "agent": agent_name})}
+                                yield {"data": json.dumps({"done": True, "session_id": str(chat_session.id), "agent": agent_name})}
+                                return
+
+                        yield {"data": json.dumps({"token": text, "agent": agent_name})}
+
+                elif event_type == "run_item_stream_event":
+                    # LiteLLM uses run_item_stream_event with message_output_created
+                    name = getattr(event, "name", None)
+                    item = getattr(event, "item", None)
+                    if name == "message_output_created" and item:
+                        raw_item = getattr(item, "raw_item", None)
+                        if raw_item:
+                            # Extract text from raw_item.content (list of ResponseOutputText)
+                            content_list = getattr(raw_item, "content", None) or []
+                            for content_item in content_list:
+                                text = getattr(content_item, "text", None)
                                 if text:
                                     full_response.append(text)
                                     stream_buffer += text
 
-                                    # Check stream buffer for leaks (first 500 chars)
                                     if not buffer_checked and len(stream_buffer) >= 500:
                                         buffer_checked = True
                                         if leak_detector and leak_detector.scan_stream_buffer(stream_buffer[:500]):
@@ -258,10 +299,10 @@ async def chat_stream(
 
                                     yield {"data": json.dumps({"token": text, "agent": agent_name})}
 
-                    elif event_type == "agent_updated_stream_event":
-                        new_agent = getattr(getattr(event, "new_agent", None), "name", None)
-                        if new_agent:
-                            agent_name = new_agent
+                elif event_type == "agent_updated_stream_event":
+                    new_agent = getattr(getattr(event, "new_agent", None), "name", None)
+                    if new_agent:
+                        agent_name = new_agent
 
         except Exception as e:
             logger.error("Streaming agent error: %s", e, exc_info=True)

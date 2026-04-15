@@ -103,16 +103,12 @@ class LeakCheckOutput(BaseModel):
     leak_type: str | None = None
 
 
-class AgentMessageOutput(BaseModel):
-    response: str
-
-
 # ── Output guardrail: OutputLeakDetector ─────────────────────────
 @output_guardrail
 async def leak_detection_guardrail(
     ctx: RunContextWrapper,
     agent: Agent,
-    output: AgentMessageOutput,
+    output: str,
 ) -> GuardrailFunctionOutput:
     """Scan final agent output for leaked system prompt fragments or canary tokens."""
     if _leak_detector is None:
@@ -121,7 +117,9 @@ async def leak_detection_guardrail(
             tripwire_triggered=False,
         )
 
-    result = _leak_detector.scan(output.response)
+    # output is the final agent response string
+    text = output if isinstance(output, str) else str(output)
+    result = _leak_detector.scan(text)
 
     if result.leaked:
         logger.critical(

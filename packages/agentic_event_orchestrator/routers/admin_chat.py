@@ -63,7 +63,7 @@ async def list_sessions(
             "user_id_hash": _hash_user_id(s.user_id),
             "started_at": s.started_at.isoformat(),
             "last_activity_at": s.last_activity_at.isoformat(),
-            "status": s.status.value,
+            "status": s.status,
             "active_agent": s.active_agent,
             "message_count": msg_count,
         })
@@ -92,7 +92,7 @@ async def get_session_messages(
     data = [{
         "message_id": str(m.id),
         "sequence": m.sequence,
-        "role": m.role.value,
+        "role": m.role,
         "content": m.content,
         "agent_name": m.agent_name,
         "created_at": m.created_at.isoformat(),

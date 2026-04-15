@@ -1,0 +1,10 @@
+{
+  "permission": {
+    "read": {
+      "/home/ali/Desktop/Event-AI-Latest/.kilo/get-shit-done/*": "allow"
+    },
+    "external_directory": {
+      "/home/ali/Desktop/Event-AI-Latest/.kilo/get-shit-done/*": "allow"
+    }
+  }
+}

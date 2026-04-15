@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from sqlmodel import Field, SQLModel, Column
-from sqlalchemy import JSON
+from sqlalchemy import JSON, String, DateTime, Enum as SAEnum
 
 
 class ExecutionStatus(str, Enum):
@@ -20,9 +20,18 @@ class AgentExecution(SQLModel, table=True):
     session_id: uuid.UUID = Field(foreign_key="ai.chat_sessions.id", index=True)
     message_id: uuid.UUID = Field(foreign_key="ai.messages.id")
     agent_name: str = Field(max_length=100)
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    ended_at: Optional[datetime] = None
-    status: ExecutionStatus = Field(default=ExecutionStatus.completed)
+    started_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column("started_at", DateTime(timezone=True), nullable=False),
+    )
+    ended_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column("ended_at", DateTime(timezone=True), nullable=True),
+    )
+    status: str = Field(
+        default=ExecutionStatus.completed.value,
+        sa_column=Column("status", String(20), server_default="completed", nullable=False),
+    )
     tokens_used: Optional[int] = None
     error: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     metadata_: Optional[dict] = Field(default=None, sa_column=Column("metadata", JSON))

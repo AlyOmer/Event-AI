@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from sqlmodel import Field, SQLModel, Column
-from sqlalchemy import JSON, text
+from sqlalchemy import JSON, text, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
 
@@ -23,8 +23,17 @@ class ChatSession(SQLModel, table=True):
         sa_column_kwargs={"server_default": text("gen_random_uuid()")},
     )
     user_id: uuid.UUID = Field(index=True)
-    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    last_activity_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    status: SessionStatus = Field(default=SessionStatus.active)
+    started_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    last_activity_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    status: str = Field(
+        default=SessionStatus.active.value,
+        sa_column=Column("status", String(20), server_default="active", nullable=False),
+    )
     active_agent: Optional[str] = Field(default=None, max_length=100)
     metadata_: Optional[dict] = Field(default=None, sa_column=Column("metadata", JSON))
