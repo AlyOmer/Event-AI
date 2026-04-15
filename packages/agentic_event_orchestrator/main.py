@@ -30,8 +30,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     settings = get_settings()
 
-    # DB — use async_database_url property which handles driver prefix conversion
-    engine = create_async_engine(settings.async_database_url, echo=False)
+    # DB — use async_database_url (sslmode stripped); pass SSL via connect_args
+    connect_args = {"ssl": "require"} if settings.ssl_required else {}
+    engine = create_async_engine(settings.async_database_url, echo=False, connect_args=connect_args)
     session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
     # Shared HTTP client

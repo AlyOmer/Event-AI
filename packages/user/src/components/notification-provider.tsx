@@ -26,11 +26,15 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export function NotificationProvider({ children }: { children: ReactNode }) {
     const queryClient = useQueryClient();
 
+    // Only fetch when user has an auth token — prevents 401 spam on public pages
+    const hasToken = typeof window !== "undefined" && !!localStorage.getItem("userToken");
+
     // Fetch initial notifications using React Query
     const { data } = useQuery({
         queryKey: ["notifications"],
         queryFn: getUserNotifications,
-        refetchInterval: 60000, // Fallback refetch every minute
+        enabled: hasToken,
+        refetchInterval: hasToken ? 60000 : false, // Fallback refetch every minute
         staleTime: 30000,
     });
 

@@ -93,13 +93,14 @@ class GoogleOAuthService:
 
     # ── State JWT (CSRF protection) ───────────────────────────────────────────
 
-    def create_state_token(self, redirect_to: str = "/dashboard") -> str:
+    def create_state_token(self, redirect_to: str = "/dashboard", frontend_origin: str = "") -> str:
         """
         Create a signed, short-lived JWT to use as the OAuth `state` parameter.
 
         The state JWT contains:
           - nonce: random 16-byte URL-safe string (prevents replay)
           - redirect_to: frontend path to redirect after successful login
+          - frontend_origin: the portal origin (e.g. http://localhost:3000) to redirect back to
           - iat / exp: issued-at and expiry (5 min)
           - iss: "event-ai-oauth" (distinguishes from access tokens)
 
@@ -111,6 +112,7 @@ class GoogleOAuthService:
         payload = {
             "nonce": secrets.token_urlsafe(16),
             "redirect_to": redirect_to,
+            "frontend_origin": frontend_origin or s.frontend_url,
             "iat": now,
             "exp": now + timedelta(seconds=_STATE_JWT_TTL_SECONDS),
             "iss": "event-ai-oauth",
@@ -149,7 +151,7 @@ class GoogleOAuthService:
 
     # ── Authorization URL ─────────────────────────────────────────────────────
 
-    def build_authorization_url(self, redirect_to: str = "/dashboard") -> str:
+    def build_authorization_url(self, redirect_to: str = "/dashboard", frontend_origin: str = "") -> str:
         """
         Build the full Google OAuth2 authorization URL.
 
@@ -158,6 +160,10 @@ class GoogleOAuthService:
         redirect_to:
             Frontend path to redirect the user to after a successful login.
             Embedded in the signed state JWT.
+        frontend_origin:
+            The portal origin (e.g. http://localhost:3000) that initiated the
+            OAuth flow. Embedded in state JWT so the callback redirects to the
+            correct portal. Defaults to settings.frontend_url if not provided.
 
         Returns
         -------
@@ -167,7 +173,7 @@ class GoogleOAuthService:
         self._require_configured()
         s = self._settings()
 
-        state = self.create_state_token(redirect_to=redirect_to)
+        state = self.create_state_token(redirect_to=redirect_to, frontend_origin=frontend_origin)
         params = {
             "client_id": s.google_client_id,
             "redirect_uri": s.google_redirect_uri,
@@ -376,7 +382,7 @@ class GoogleOAuthService:
         session: AsyncSession,
         code: str,
         state: str,
-    ) -> tuple[dict, str]:
+    ) -> tuple[dict, str, str]:
         """
         Orchestrate the full OAuth callback sequence:
 
@@ -404,9 +410,12 @@ class GoogleOAuthService:
             {access_token, token_type, expires_in, refresh_token}
         redirect_to:
             Frontend path extracted from the state JWT (e.g. "/dashboard").
+        frontend_origin:
+            Portal origin from the state JWT (e.g. "http://localhost:3003").
         """
         state_payload = self.verify_state_token(state)
         redirect_to: str = state_payload.get("redirect_to", "/dashboard")
+        frontend_origin: str = state_payload.get("frontend_origin", "")
 
         # Exchange code → get Google tokens (access_token + id_token)
         google_tokens = await self.exchange_code_for_tokens(code)
@@ -446,7 +455,7 @@ class GoogleOAuthService:
             user_id=str(user.id),
             email=user.email,
         )
-        return tokens, redirect_to
+        return tokens, redirect_to, frontend_origin
 
 
 # Module-level singleton — import this everywhere

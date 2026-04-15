@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -14,7 +14,7 @@ import { useAuthStore } from '@/lib/auth-store';
  * This page reads those params, stores the tokens, fetches /auth/me,
  * and redirects to /dashboard.
  */
-export default function AuthCallbackPage() {
+function CallbackHandler() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { loginWithTokens } = useAuthStore();
@@ -59,3 +59,18 @@ export default function AuthCallbackPage() {
         </div>
     );
 }
+
+export default function AuthCallbackPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="flex min-h-screen items-center justify-center">
+                    <Loader2 className="h-10 w-10 animate-spin text-primary-600" />
+                </div>
+            }
+        >
+            <CallbackHandler />
+        </Suspense>
+    );
+}
+

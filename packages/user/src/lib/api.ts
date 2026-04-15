@@ -157,7 +157,7 @@ export const resendVerificationEmail = async () => {
 
 // Notifications API
 export const getUserNotifications = async () => {
-    const response = await api.get("/notifications");
+    const response = await api.get("/notifications/");
     return response.data;
 };
 

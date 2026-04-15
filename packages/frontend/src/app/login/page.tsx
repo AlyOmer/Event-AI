@@ -41,7 +41,8 @@ export default function LoginPage() {
 
     const handleGoogleSignIn = () => {
         setGoogleLoading(true);
-        window.location.href = `${BACKEND_URL}/auth/google`;
+        const origin = window.location.origin; // e.g. http://localhost:3000
+        window.location.href = `${BACKEND_URL}/auth/google?frontend_origin=${encodeURIComponent(origin)}`;
     };
 
     useEffect(() => {

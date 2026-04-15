@@ -10,13 +10,32 @@ class Settings(BaseSettings):
 
     @property
     def async_database_url(self) -> str:
-        """Return asyncpg-compatible URL, preferring APP_DATABASE_URL."""
+        """Return asyncpg-compatible URL, preferring APP_DATABASE_URL.
+
+        SQLAlchemy's asyncpg dialect does NOT forward query params like
+        ``sslmode`` to asyncpg's ``connect()``.  We strip ``sslmode`` here
+        and expose ``ssl_required`` so the engine can pass SSL via
+        ``connect_args={"ssl": "require"}`` instead.
+        """
         url = self.app_database_url or self.database_url
         if url.startswith("postgresql://"):
-            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        if url.startswith("postgres://"):
-            return url.replace("postgres://", "postgresql+asyncpg://", 1)
-        return url
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+
+        # Strip sslmode from query params — handled via connect_args
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        params.pop("sslmode", None)
+        new_query = urlencode({k: v[0] for k, v in params.items()})
+        return urlunparse(parsed._replace(query=new_query))
+
+    @property
+    def ssl_required(self) -> bool:
+        """True when the original DB URL includes sslmode=require (or stricter)."""
+        url = self.app_database_url or self.database_url
+        return "sslmode=require" in url or "sslmode=verify" in url
 
     # Gemini / LLM
     gemini_api_key: str = ""

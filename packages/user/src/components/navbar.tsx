@@ -58,7 +58,11 @@ export function Navbar() {
         router.push("/login");
     };
 
-    const isLoggedIn = typeof window !== "undefined" && !!localStorage.getItem("userToken");
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+    useEffect(() => {
+        setIsLoggedIn(!!localStorage.getItem("userToken"));
+    }, []);
 
     if (pathname === "/login" || pathname === "/signup" || pathname === "/register") return null;
 

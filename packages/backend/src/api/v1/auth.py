@@ -416,7 +416,7 @@ async def confirm_password_reset(
         "Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to be configured."
     ),
 )
-async def google_login(redirect_to: str = "/dashboard"):
+async def google_login(redirect_to: str = "/dashboard", frontend_origin: str = ""):
     """
     Build the Google authorization URL and redirect the browser to it.
 
@@ -425,9 +425,16 @@ async def google_login(redirect_to: str = "/dashboard"):
     redirect_to:
         Frontend path to redirect to after a successful login (default: /dashboard).
         Embedded in the signed state JWT so it survives the OAuth round-trip.
+    frontend_origin:
+        The portal origin that initiated the login (e.g. http://localhost:3003).
+        Embedded in state JWT so the callback redirects to the correct portal.
+        Defaults to FRONTEND_URL env var if not provided.
     """
-    authorization_url = google_oauth_service.build_authorization_url(redirect_to=redirect_to)
-    log.info("google_oauth.redirect", redirect_to=redirect_to)
+    authorization_url = google_oauth_service.build_authorization_url(
+        redirect_to=redirect_to,
+        frontend_origin=frontend_origin,
+    )
+    log.info("google_oauth.redirect", redirect_to=redirect_to, frontend_origin=frontend_origin)
     return RedirectResponse(url=authorization_url, status_code=status.HTTP_302_FOUND)
 
 
@@ -485,7 +492,7 @@ async def google_callback(
         )
 
     try:
-        tokens, redirect_to = await google_oauth_service.handle_callback(
+        tokens, redirect_to, frontend_origin = await google_oauth_service.handle_callback(
             session=session,
             code=code,
             state=state,
@@ -506,15 +513,22 @@ async def google_callback(
             status_code=status.HTTP_302_FOUND,
         )
 
-    # ── Success — redirect to frontend with tokens in query string ─────────────
-    # The frontend reads ?token= and ?refresh_token= from the URL, stores them
-    # in localStorage/cookie, then strips the params from the address bar.
+    # ── Success — redirect to the originating portal with tokens ──────────────
+    # Use frontend_origin from state JWT (set by the portal that initiated login)
+    # so each portal (vendor:3000, admin:3002, user:3003) gets redirected correctly.
+    origin = frontend_origin or settings.frontend_url
     from urllib.parse import urlencode
     params = urlencode({
         "token": tokens["access_token"],
         "refresh_token": tokens["refresh_token"],
     })
-    redirect_url = f"{settings.frontend_url}{redirect_to}?{params}"
+    # Redirect to the /auth/callback page (a public route) which stores
+    # the tokens in localStorage + cookie before navigating to a protected
+    # route.  Previously this redirected to {redirect_to} (e.g. /dashboard)
+    # directly, but the Next.js middleware blocks protected routes before
+    # the client-side JS has a chance to persist the tokens, causing 307
+    # redirect loops.
+    redirect_url = f"{origin}/auth/callback?{params}"
 
-    log.info("google_oauth.callback.redirecting", redirect_to=redirect_to)
+    log.info("google_oauth.callback.redirecting", redirect_to="/auth/callback", origin=origin)
     return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)

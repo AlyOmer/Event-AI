@@ -28,17 +28,18 @@ function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const registered = searchParams.get("registered");
+    const oauthError = searchParams.get("error");
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const [error, setError] = useState("");
+    const [error, setError] = useState(oauthError || "");
     const [loading, setLoading] = useState(false);
     const [googleLoading, setGoogleLoading] = useState(false);
     const [pendingMessage, setPendingMessage] = useState(false);
     const [rejectedMessage, setRejectedMessage] = useState(false);
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -75,8 +76,9 @@ function LoginForm() {
     const handleGoogleSignIn = async () => {
         setGoogleLoading(true);
         try {
-            // Redirect to backend Google OAuth endpoint
-            window.location.href = `${API_URL}/auth/google`;
+            // Pass the portal origin so the backend redirects back to the correct portal
+            const origin = window.location.origin; // e.g. http://localhost:3003
+            window.location.href = `${API_URL}/auth/google?frontend_origin=${encodeURIComponent(origin)}`;
         } catch {
             setGoogleLoading(false);
         }

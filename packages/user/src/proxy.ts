@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/', '/login', '/signup', '/register', '/marketplace'];
+const PUBLIC_ROUTES = ['/', '/login', '/signup', '/register', '/marketplace', '/auth/callback'];
 
 // Routes that start with these prefixes are also public
 const PUBLIC_PREFIXES = ['/marketplace/'];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Allow public routes

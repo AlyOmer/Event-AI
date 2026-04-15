@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
     LayoutDashboard,
@@ -51,8 +51,21 @@ interface RecentBooking {
 
 
 export default function DashboardPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex min-h-screen items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+            </div>
+        }>
+            <DashboardContent />
+        </Suspense>
+    );
+}
+
+function DashboardContent() {
     const router = useRouter();
-    const { user, vendor, isAuthenticated, logout, fetchProfile } = useAuthStore();
+    const searchParams = useSearchParams();
+    const { user, vendor, isAuthenticated, logout, fetchProfile, loginWithTokens } = useAuthStore();
     const [dashStats, setDashStats] = useState<DashboardStats>({ totalServices: 0, activeServices: 0, totalBookings: 0, pendingBookings: 0 });
     const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
     const [loadingDash, setLoadingDash] = useState(true);
@@ -62,6 +75,22 @@ export default function DashboardPage() {
     useEffect(() => {
         setHasMounted(true);
     }, []);
+
+    // Handle OAuth callback tokens in URL (?token=...&refresh_token=...)
+    useEffect(() => {
+        if (!hasMounted) return;
+        const token = searchParams?.get('token');
+        const refreshToken = searchParams?.get('refresh_token');
+        if (token && refreshToken) {
+            loginWithTokens(token, refreshToken).then(() => {
+                // Strip tokens from URL without triggering a navigation
+                const url = new URL(window.location.href);
+                url.searchParams.delete('token');
+                url.searchParams.delete('refresh_token');
+                window.history.replaceState({}, '', url.toString());
+            });
+        }
+    }, [hasMounted, searchParams, loginWithTokens]);
 
     useEffect(() => {
         if (!hasMounted) return;
