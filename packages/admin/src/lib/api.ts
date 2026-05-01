@@ -31,24 +31,38 @@ api.interceptors.response.use(
     }
 );
 
-export const getVendors = async () => {
-    const response = await api.get("/admin/vendors");
+export const getVendors = async (params?: { page?: number; limit?: number; status?: string; q?: string }) => {
+    const response = await api.get("/admin/vendors", { params });
     return response.data?.data || response.data;
 };
 
-export const updateVendorStatus = async (id: string, status: string) => {
-    const response = await api.patch(`/admin/vendors/${id}/status`, { status });
+export const updateVendorStatus = async (id: string, status: string, reason?: string) => {
+    const response = await api.patch(`/admin/vendors/${id}/status`, { status, reason });
     return response.data;
 };
 
-export const getUsers = async () => {
-    const response = await api.get("/admin/users");
+export const getUsers = async (params?: { page?: number; limit?: number; role?: string; q?: string }) => {
+    const response = await api.get("/admin/users", { params });
     return response.data?.data || response.data;
 };
 
 export const getStats = async () => {
     const response = await api.get("/admin/stats");
     return response.data?.data || response.data;
+};
+
+export const getCategories = async () => {
+    const response = await api.get("/admin/categories");
+    return response.data?.data || response.data;
+};
+
+export const createCategory = async (data: { name: string; slug: string; description?: string }) => {
+    const response = await api.post("/admin/categories", data);
+    return response.data;
+};
+
+export const deleteCategory = async (id: string) => {
+    await api.delete(`/admin/categories/${id}`);
 };
 
 export const getBookings = async (params?: { page?: number; status?: string }) => {

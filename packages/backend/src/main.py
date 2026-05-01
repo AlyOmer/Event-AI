@@ -11,6 +11,9 @@ from src.api.v1.public_vendors import router as public_vendors_router
 from src.api.v1.categories import router as categories_router
 from src.api.v1.admin.approvals import router as admin_approvals_router
 from src.api.v1.admin.categories import router as admin_categories_router
+from src.api.v1.admin.stats import router as admin_stats_router
+from src.api.v1.admin.vendors import router as admin_vendors_router
+from src.api.v1.admin.users import router as admin_users_router
 from src.api.v1.services import router as services_router
 from src.api.v1.inquiries import router as inquiries_router
 from src.api.v1.uploads import router as uploads_router
@@ -100,6 +103,9 @@ app.include_router(public_vendors_router, prefix="/api/v1/public_vendors")
 app.include_router(categories_router, prefix="/api/v1/categories")
 app.include_router(admin_approvals_router, prefix="/api/v1/admin/approvals")
 app.include_router(admin_categories_router, prefix="/api/v1/admin/categories")
+app.include_router(admin_stats_router, prefix="/api/v1/admin/stats")
+app.include_router(admin_vendors_router, prefix="/api/v1/admin/vendors")
+app.include_router(admin_users_router, prefix="/api/v1/admin/users")
 app.include_router(services_router, prefix="/api/v1/services")
 app.include_router(inquiries_router, prefix="/api/v1/inquiries")
 app.include_router(uploads_router, prefix="/api/v1/uploads")

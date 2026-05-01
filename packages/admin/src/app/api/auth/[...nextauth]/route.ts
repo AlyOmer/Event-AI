@@ -15,7 +15,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         try {
-          const res = await fetch(`${API_URL}/auth/login`, {
+          const res = await fetch(`${API_URL}/users/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -29,17 +29,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const data = await res.json();
 
           // RBAC: Only allow admin/owner roles into the admin portal
-          const userRole = data.user?.role?.toLowerCase();
+          const userRole = data.data?.user?.role?.toLowerCase();
           if (!userRole || !ALLOWED_ROLES.includes(userRole)) {
             // Reject login for non-admin users
             return null;
           }
 
           return {
-            id: data.user?.id || "1",
-            name: `${data.user?.firstName || ""} ${data.user?.lastName || ""}`.trim() || "Admin",
-            email: data.user?.email || (credentials?.email as string),
-            accessToken: data.accessToken,
+            id: data.data?.user?.id || "1",
+            name: `${data.data?.user?.first_name || ""} ${data.data?.user?.last_name || ""}`.trim() || "Admin",
+            email: data.data?.user?.email || (credentials?.email as string),
+            accessToken: data.data?.token,
             role: userRole,
           };
         } catch {

@@ -25,6 +25,7 @@ export default function Dashboard() {
     const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
         queryKey: ["stats"],
         queryFn: getStats,
+        staleTime: 60_000, // 60 seconds
     });
 
     const { data: recentVendors, isLoading: vendorsLoading } = useQuery({
@@ -77,7 +78,6 @@ export default function Dashboard() {
         {
             name: "Total Bookings",
             value: (stats?.totalBookings || 0).toLocaleString(),
-            prefix: "PKR",
             icon: TrendingUp,
             color: "bg-violet-50 text-violet-600",
             trend: "+12%",
@@ -107,6 +107,14 @@ export default function Dashboard() {
             trend: "Awaiting review",
             trendUp: null,
         },
+        {
+            name: "Revenue",
+            value: `PKR ${(stats?.totalRevenue || 0).toLocaleString()}`,
+            icon: TrendingUp,
+            color: "bg-violet-50 text-violet-600",
+            trend: "+8%",
+            trendUp: true,
+        },
     ];
 
     return (
@@ -124,7 +132,7 @@ export default function Dashboard() {
             </div>
 
             {/* Stat cards */}
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
                 {statCards.map((stat) => (
                     <div
                         key={stat.name}
@@ -145,10 +153,7 @@ export default function Dashboard() {
                                 </span>
                             )}
                         </div>
-                        <p className="text-2xl font-bold text-gray-900">
-                            {stat.prefix && <span className="text-sm font-medium text-gray-400 mr-1">{stat.prefix}</span>}
-                            {stat.value}
-                        </p>
+                        <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
                         <p className="mt-1 text-sm text-gray-500">{stat.name}</p>
                     </div>
                 ))}
@@ -156,21 +161,81 @@ export default function Dashboard() {
 
             {/* Content grid */}
             <div className="grid gap-5 lg:grid-cols-7">
-                {/* Overview placeholder */}
+                {/* Overview - Booking Status Breakdown */}
                 <div className="col-span-4 rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
                     <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                         <div>
                             <h3 className="font-semibold text-gray-900">Overview</h3>
-                            <p className="text-xs text-gray-400 mt-0.5">Platform activity summary</p>
+                            <p className="text-xs text-gray-400 mt-0.5">Booking status breakdown</p>
                         </div>
                         <Activity className="h-4 w-4 text-gray-400" />
                     </div>
                     <div className="p-6">
-                        <div className="h-72 w-full flex flex-col items-center justify-center rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 border border-dashed border-gray-200">
-                            <TrendingUp className="h-10 w-10 text-gray-300 mb-3" />
-                            <p className="text-sm font-medium text-gray-400">Analytics charts coming soon</p>
-                            <p className="text-xs text-gray-300 mt-1">Real-time data visualization</p>
-                        </div>
+                        {stats && stats.totalBookings > 0 ? (
+                            <div className="space-y-4">
+                                {/* Pending Bookings */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-sm font-medium text-gray-700">Pending</span>
+                                        <span className="text-sm font-semibold text-gray-900">
+                                            {stats.pendingBookings} ({((stats.pendingBookings / stats.totalBookings) * 100).toFixed(1)}%)
+                                        </span>
+                                    </div>
+                                    <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                                        <div 
+                                            className="h-full bg-amber-400 transition-all duration-500"
+                                            style={{ width: `${(stats.pendingBookings / stats.totalBookings) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Confirmed Bookings */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-sm font-medium text-gray-700">Confirmed</span>
+                                        <span className="text-sm font-semibold text-gray-900">
+                                            {stats.confirmedBookings} ({((stats.confirmedBookings / stats.totalBookings) * 100).toFixed(1)}%)
+                                        </span>
+                                    </div>
+                                    <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                                        <div 
+                                            className="h-full bg-emerald-400 transition-all duration-500"
+                                            style={{ width: `${(stats.confirmedBookings / stats.totalBookings) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Other Bookings (Completed, Cancelled, etc.) */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-sm font-medium text-gray-700">Other</span>
+                                        <span className="text-sm font-semibold text-gray-900">
+                                            {stats.totalBookings - stats.pendingBookings - stats.confirmedBookings} ({(((stats.totalBookings - stats.pendingBookings - stats.confirmedBookings) / stats.totalBookings) * 100).toFixed(1)}%)
+                                        </span>
+                                    </div>
+                                    <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                                        <div 
+                                            className="h-full bg-blue-400 transition-all duration-500"
+                                            style={{ width: `${((stats.totalBookings - stats.pendingBookings - stats.confirmedBookings) / stats.totalBookings) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Summary */}
+                                <div className="pt-4 mt-4 border-t border-gray-100">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span className="font-medium text-gray-700">Total Bookings</span>
+                                        <span className="font-bold text-gray-900">{stats.totalBookings}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-72 w-full flex flex-col items-center justify-center rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 border border-dashed border-gray-200">
+                                <TrendingUp className="h-10 w-10 text-gray-300 mb-3" />
+                                <p className="text-sm font-medium text-gray-400">No bookings yet</p>
+                                <p className="text-xs text-gray-300 mt-1">Booking data will appear here</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 

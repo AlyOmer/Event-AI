@@ -1,38 +1,38 @@
 <!--
 SYNC IMPACT REPORT (Constitution Update)
 ========================================
-Version change: 1.3.1 → 2.0.0 (MAJOR bump: switching backend from Node.js to Python)
-Date: 2026-04-08
+Version change: 2.0.1 → 2.1.0 (MINOR bump: adding MCP integration and monetization framework)
+Date: 2026-04-27
 
 Modified sections:
-- Project Identity: Architecture line updated to "Python AI service + Python backend API"
-- I. Monorepo-First Architecture: Backend package runtime changed to "Python (FastAPI)"
-- II. Technology Stack Mandate: Entire backend stack replaced:
-    * Node.js/Fastify/Prisma/Zod → Python/FastAPI/SQLModel/Pydantic
-    * Added uv package manager, asyncpg, Structlog
-    * Event Bus updated for Python
-- IV. Relational Databases: Removed Prisma references, unified on SQLModel + Alembic
-- VI. API Contract Discipline: Zod → Pydantic throughout
-- VIII. Security: Zod → Pydantic; SQL injection prevention updated for SQLModel
-- IX. Simplicity: Stack references updated (FastAPI, SQLModel, OpenAI Agents SDK)
-- X. Code Quality: Split into TypeScript (frontends only) + Python (backend + AI)
-- Anti-Patterns: Complete rewrite - removed Node.js/Zod/Prisma patterns, added Python-specific
-- Infrastructure: Retained pnpm for frontends; added uv for Python packages
+- Fixed duplicate section numbering: second "VII" (Agent Architecture) renumbered to VIII;
+  all subsequent sections renumbered (VIII→IX, IX→X, X→XI)
+- III. Event-Driven Architecture: Expanded domain events taxonomy with full payment.* events
+  and vendor.suspended event; added payment.refunded and payment.failed events
+- New Section IX: MCP Protocol Integration — standards for Model Context Protocol tool servers
+  used by the AI agent service to access database, logs, and IDE context
+- New Section XII: Monetization & Usage Framework — subscription plans, usage metering,
+  billing integration standards, and agent monetization hooks
+- Anti-Patterns: Added MCP misuse patterns and monetization bypass patterns
+- Definition of Done: Added MCP compliance and monetization compliance checklist items
+- Performance Standards: Added MCP tool call latency target
 
-Templates updated (post-validation needed):
-- .specify/templates/plan-template.md: Language/Version mentions Python 3.12, FastAPI, pytest
-- .specify/templates/tasks-template.md: Sample tasks reference Python/pytest patterns
-- .specify/templates/spec-template.md: Does not exist - needs creation if spec command is used
-- .specify/templates/commands/*.md: No constitution-specific references found
+Previous update history:
+- 2.0.0 (2026-04-08): MAJOR bump — switched backend from Node.js to Python
+- 1.3.1 → 2.0.0: Node.js/Fastify/Prisma/Zod → Python/FastAPI/SQLModel/Pydantic
 
 TODOs:
-- None - all placeholders resolved
+- Create spec: admin-dashboard (009) — packages/admin is currently a stub
+- Create spec: payment-integration (005) — no spec or code exists
+- Create spec: vendor-portal-completion (012) — only login is implemented
+- Create spec: event-driven-architecture — domain_events table + at-least-once delivery
+- Create spec: analytics (010) — no spec exists
+- Complete spec: user-portal-api-audit — design.md and tasks.md are missing
 
 Next steps:
-- Run ADR: "Python Backend Architecture" to document rationale for switching stack
-- Update any branch-specific CLAUDE.md files referencing Node.js
-- Verify pnpm/uv coexistence in Turborepo pipeline configuration
-- Begin backend migration tasks based on new Python architecture
+- Write ADR: "MCP Protocol Integration" documenting tool server selection rationale
+- Write ADR: "Monetization Framework" documenting billing provider selection
+- Update packages/agentic_event_orchestrator to register MCP tool servers in lifespan
 -->
 
 ## Project Identity
@@ -130,16 +130,26 @@ The platform uses an event-driven architecture (EDA) where services communicate 
 | Event | Producer | Consumers |
 |---|---|---|
 | `event.created` | Backend | AI Service (auto-plan), Notification Service |
+| `event.updated` | Backend | All portals (real-time update), AI Service |
 | `event.status_changed` | Backend | All portals (real-time update), AI Service |
+| `event.cancelled` | Backend | Vendor Portal, AI Service (re-plan), Email Service |
 | `booking.created` | Backend | Vendor Portal (alert), AI Service (schedule update), Email Service |
 | `booking.confirmed` | Backend | User Portal, Email Service, Scheduler |
 | `booking.cancelled` | Backend | Vendor Portal, AI Service (re-plan), Email Service |
+| `booking.completed` | Backend | User Portal, Email Service, Analytics Service |
 | `vendor.registered` | Backend | Admin Portal (approval queue), AI Service (embedding generation) |
-| `vendor.approved` | Backend | Vendor Portal, Email Service |
-| `payment.received` | Backend | Booking Service (status update), Email Service |
+| `vendor.approved` | Backend | Vendor Portal, Email Service, AI Service (embed) |
+| `vendor.rejected` | Backend | Vendor Portal, Email Service, AI Service (delete embed) |
+| `vendor.suspended` | Backend | Vendor Portal, Email Service, AI Service (delete embed) |
+| `payment.initiated` | Backend | Booking Service (status update) |
+| `payment.received` | Backend | Booking Service (status update), Email Service, Analytics Service |
+| `payment.failed` | Backend | User Portal (alert), Email Service |
+| `payment.refunded` | Backend | User Portal (alert), Booking Service, Email Service |
 | `ai.plan_generated` | AI Service | Backend (store plan), User Portal (display) |
 | `ai.vendor_recommended` | AI Service | Backend (log recommendation) |
 | `review.submitted` | Backend | AI Service (update vendor embeddings), Vendor Portal |
+| `user.registered` | Backend | Email Service (welcome), Admin Portal |
+| `user.email_verified` | Backend | Email Service (confirmation) |
 
 **Implementation Rules:**
 1. **Events are facts, not commands.** Events describe something that already happened (`booking.created`), never something that should happen (`create.booking`).
@@ -228,7 +238,7 @@ All inter-service communication uses strictly versioned, Pydantic-validated REST
 3. API versioning: all routes are prefixed with `/api/v1/`. Breaking changes require a new version (`/api/v2/`).
 4. The AI service exposes its own endpoints under `/api/v1/ai/` proxied through the backend. The frontend NEVER calls the Python service directly.
 5. Pagination follows: `?page=1&limit=20` returning `meta: { total, page, limit, pages }`.
-6. Error codes MUST use the taxonomy: `AUTH_*`, `VALIDATION_*`, `NOT_FOUND_*`, `CONFLICT_*`, `INTERNAL_*`, `AI_*`.
+6. Error codes MUST use the taxonomy: `AUTH_*`, `VALIDATION_*`, `NOT_FOUND_*`, `CONFLICT_*`, `INTERNAL_*`, `AI_*`, `BILLING_*`.
 
 ---
 
@@ -245,7 +255,7 @@ The AI Agent relies on robust Vector Database and Augmented Memory patterns (Age
 
 ---
 
-### VII. Agent Architecture Standards
+### VIII. Agent Architecture Standards
 
 The AI agent system follows a strict hierarchical delegation pattern, built on FastAPI best practices from the [Panaversity Agent Factory](https://agentfactory.panaversity.org/docs/Building-Agent-Factories/fastapi-for-agents).
 
@@ -352,7 +362,7 @@ TriageAgent (entry point)
 
 ---
 
-### VIII. Security & Secrets (NON-NEGOTIABLE)
+### IX. Security & Secrets (NON-NEGOTIABLE)
 
 1. **No hardcoded secrets.** All secrets use `.env` files (never committed) with `.env.example` templates.
 2. JWT secrets MUST be 256-bit cryptographically random. Default/dev fallback secrets are forbidden in production.
@@ -377,7 +387,7 @@ TriageAgent (entry point)
 
 ---
 
-### IX. Simplicity & Anti-Abstraction
+### X. Simplicity & Anti-Abstraction
 
 Complexity is the enemy. Every abstraction must earn its existence.
 
@@ -391,7 +401,7 @@ Complexity is the enemy. Every abstraction must earn its existence.
 
 ---
 
-### X. Code Quality & Consistency
+### XI. Code Quality & Consistency
 
 **TypeScript (Frontends):**
 - Strict mode enabled (`"strict": true` in tsconfig)
@@ -412,6 +422,81 @@ Complexity is the enemy. Every abstraction must earn its existence.
 - All models use `__tablename__` to snake_case table names
 - Fields use explicit `Field()` attributes where needed
 - All datetime fields use timezone-aware types with `default_factory=datetime.utcnow`
+
+---
+
+### XII. MCP Protocol Integration
+
+The AI agent service uses the Model Context Protocol (MCP) to give agents structured, tool-based access to external context sources — database state, logs, file system, and IDE context — without requiring bespoke APIs for each source.
+
+**What MCP is for in this project:**
+- Giving agents read access to live database state (vendor records, booking status, event data) via MCP tool servers rather than raw SQL in agent instructions.
+- Exposing structured log queries so agents can reason about recent errors or system state.
+- Enabling future IDE-context tools (e.g., reading spec files, referencing code) for developer-facing agents.
+
+**MCP Architecture Rules:**
+
+1. **MCP servers are registered in the FastAPI lifespan** — All MCP tool servers MUST be initialized in the `lifespan` function and stored on `app.state.mcp_servers`. No lazy initialization.
+2. **MCP tools follow the same `@function_tool` pattern** — MCP-backed tools are wrapped with `@function_tool` decorators and exposed to agents through the standard tool registry. Agents MUST NOT call MCP servers directly.
+3. **MCP servers are read-only by default** — MCP tool servers used by agents MUST expose read-only operations. Write operations go through the backend REST API, not MCP.
+4. **MCP configuration via Settings** — MCP server URLs, API keys, and transport types are managed through the `Settings` object (`Pydantic BaseSettings + @lru_cache`). No hardcoded MCP endpoints.
+5. **MCP transport selection:**
+   - Use `stdio` transport for local/in-process tool servers (dev and testing).
+   - Use `SSE` (HTTP + Server-Sent Events) transport for remote MCP servers in production.
+   - Use `streamable-http` transport when the MCP server supports it and bidirectional streaming is needed.
+6. **Zero MCP calls in unit tests** — MCP server calls MUST be mocked in tests using `respx` (for HTTP transports) or mock subprocess (for stdio). Tests MUST NOT connect to real MCP servers.
+7. **MCP tool naming convention** — MCP-backed tools MUST be prefixed with `mcp__` to distinguish them from direct function tools (e.g., `mcp__db__get_vendor`, `mcp__logs__query_errors`).
+8. **Graceful degradation** — If an MCP server is unavailable, the agent MUST fall back to a REST API call or return a structured error string. MCP unavailability MUST NOT crash the agent.
+
+**Approved MCP tool servers for this project:**
+| Server | Transport | Purpose |
+|---|---|---|
+| `mcp-server-postgres` (or equivalent) | stdio / SSE | Read-only DB queries for agent context |
+| Custom `event-ai-logs` server | SSE | Structured log queries for debugging agents |
+| Future: `mcp-server-filesystem` | stdio | Spec/doc file reading for developer agents |
+
+**MCP Anti-patterns (see Anti-Patterns section for full list):**
+- ❌ Agents calling MCP servers directly without `@function_tool` wrapper
+- ❌ MCP tools performing write operations (INSERT/UPDATE/DELETE)
+- ❌ Hardcoded MCP server URLs in agent instructions
+- ❌ Real MCP server connections in test suites
+
+---
+
+### XIII. Monetization & Usage Framework
+
+Event-AI is a commercial platform. All AI-powered features MUST be metered and gated behind a usage framework so that costs are recoverable and the platform is sustainable.
+
+**Monetization Principles:**
+
+1. **Every AI call is metered.** All calls to Gemini, embedding generation, and agent executions MUST be logged to a `usage_events` table with: `user_id`, `event_type` (e.g., `ai_chat_message`, `embedding_generated`, `event_plan_created`), `tokens_used`, `cost_usd`, `timestamp`, `metadata` (JSONB).
+2. **Subscription plans gate features.** The platform supports tiered plans. Feature access is checked at the API boundary via a `require_plan(min_plan)` dependency — never inside business logic.
+3. **Usage limits are enforced server-side.** Client-side plan checks are for UX only. The backend MUST enforce limits independently.
+4. **Billing is decoupled from business logic.** Payment processing (Stripe or equivalent) communicates via webhooks that emit `payment.*` domain events. Business logic reacts to events, never calls the billing provider directly.
+5. **Free tier exists.** Unauthenticated and free-tier users can access public vendor search and browse events. AI planning, booking creation, and messaging require at minimum a free registered account.
+
+**Subscription Plan Tiers (initial):**
+| Plan | AI Chat Messages/mo | Event Plans/mo | Vendor Recommendations/mo | Price |
+|---|---|---|---|---|
+| Free | 10 | 1 | 20 | PKR 0 |
+| Starter | 100 | 5 | 200 | PKR 999/mo |
+| Pro | Unlimited | Unlimited | Unlimited | PKR 2,999/mo |
+| Enterprise | Unlimited | Unlimited | Unlimited + priority | Custom |
+
+**Usage Metering Rules:**
+
+6. **`UsageEvent` SQLModel** — A `usage_events` table MUST exist with fields: `id` (UUID PK), `user_id` (UUID FK), `plan_id` (string), `event_type` (Enum), `tokens_used` (int, nullable), `cost_usd` (Decimal, nullable), `metadata` (JSONB), `created_at` (timezone-aware datetime).
+7. **Metering is async** — Usage logging MUST be done as a FastAPI background task. It MUST NOT block the API response.
+8. **Usage aggregation** — A `GET /api/v1/users/me/usage` endpoint MUST return the current period's usage summary so portals can display quota progress.
+9. **Overage handling** — When a user exceeds their plan limit, the API MUST return HTTP 402 with error code `BILLING_QUOTA_EXCEEDED` and a `meta.upgrade_url` field pointing to the upgrade page.
+
+**Billing Integration Rules:**
+
+10. **Stripe is the canonical payment provider** (or equivalent for Pakistan — e.g., JazzCash, EasyPaisa for local payments). The provider is configured via `Settings.payment_provider`.
+11. **Webhook-first** — All billing state changes (subscription created, payment received, subscription cancelled) arrive via webhooks and are processed as domain events. The backend NEVER polls the billing provider.
+12. **Idempotent webhook handlers** — Webhook handlers MUST use the billing provider's event ID for deduplication before processing.
+13. **No payment data in the database** — Card numbers, CVVs, and raw payment tokens MUST NEVER be stored. Store only billing provider customer IDs and subscription IDs.
+14. **`.env.example` MUST include** `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID_STARTER`, `STRIPE_PRICE_ID_PRO` (or equivalent provider keys).
 
 ---
 
@@ -449,6 +534,16 @@ The following patterns found in the existing codebase are explicitly forbidden g
 | Committing unmocked LLM tests | Zero LLM API calls allowed in tests. Use `respx` to mock LLM HTTP endpoints. |
 | Making N+1 DB Queries via SQLModel | Always use eager loading (e.g. `selectinload`) when fetching hierarchical data. |
 | Using LangChain for agent orchestration | LangChain is for document processing/RAG retrieval only. Use Agents SDK for orchestration. |
+| Agents calling MCP servers directly | Wrap all MCP calls in `@function_tool` decorators; agents call tools, not servers |
+| MCP tools performing write operations | MCP tools are read-only; writes go through the backend REST API |
+| Hardcoded MCP server URLs in agent code | All MCP endpoints configured via `Settings` object |
+| Real MCP server connections in tests | Mock MCP calls with `respx` (HTTP) or mock subprocess (stdio) |
+| Logging AI usage synchronously in request path | Use FastAPI `BackgroundTask` for all `usage_events` inserts |
+| Enforcing plan limits only on the frontend | Backend MUST enforce limits via `require_plan()` dependency on every gated endpoint |
+| Storing card numbers or raw payment tokens | Store only billing provider customer/subscription IDs; never raw payment data |
+| Polling the billing provider for subscription state | Use webhooks exclusively; process as domain events |
+| Calling billing provider directly from business logic | Business logic reacts to `payment.*` domain events; never calls Stripe/JazzCash directly |
+| Returning HTTP 200 when quota is exceeded | Return HTTP 402 with `BILLING_QUOTA_EXCEEDED` error code and `meta.upgrade_url` |
 
 ---
 
@@ -463,7 +558,7 @@ The following patterns found in the existing codebase are explicitly forbidden g
 ### Commit Convention
 Follow Conventional Commits: `type(scope): description`
 - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `ci`
-- Scopes: `backend`, `ai`, `user`, `admin`, `vendor`, `ui`, `infra`, `db`
+- Scopes: `backend`, `ai`, `user`, `admin`, `vendor`, `ui`, `infra`, `db`, `billing`
 - Example: `feat(ai): add vendor recommendation caching tool`
 
 ### Code Review Requirements
@@ -481,6 +576,10 @@ A feature is "done" when:
 - [ ] API documentation updated
 - [ ] No lint warnings or type errors
 - [ ] Migration tested in Neon branch (if DB changes)
+- [ ] Domain events emitted for all state changes (if applicable)
+- [ ] Usage metering added for all AI-powered operations (if applicable)
+- [ ] MCP tool wrappers added if new agent context sources are introduced
+- [ ] Plan gating enforced via `require_plan()` for any feature behind a subscription tier
 
 ---
 
@@ -490,6 +589,7 @@ A feature is "done" when:
 |---|---|
 | API p95 latency | < 200ms (non-AI endpoints) |
 | AI agent response | < 10s for single-tool calls |
+| MCP tool call latency | < 100ms (read-only DB queries via MCP) |
 | Database query time | < 50ms for indexed queries |
 | Frontend LCP | < 2.5s |
 | Frontend FID | < 100ms |
@@ -508,4 +608,4 @@ A feature is "done" when:
 4. The Anti-Patterns section is a living document — add newly discovered bad practices as they are identified.
 5. See CLAUDE.md for runtime AI agent development guidance that implements these principles.
 
-**Version**: 2.0.1 | **Ratified**: 2026-04-07 | **Last Amended**: 2026-04-09
+**Version**: 2.1.0 | **Ratified**: 2026-04-07 | **Last Amended**: 2026-04-27
