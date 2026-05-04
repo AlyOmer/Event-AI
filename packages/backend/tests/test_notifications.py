@@ -33,6 +33,10 @@ def make_mock_session():
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
     session.add = MagicMock()
+    # Mock execute to return a result object with scalar_one_or_none
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none = MagicMock(return_value=None)
+    session.execute = AsyncMock(return_value=mock_result)
     return session
 
 
@@ -299,3 +303,85 @@ async def test_put_preference_invalid_type_422(client):
 async def test_unauthenticated_401(client):
     r = await client.get("/api/v1/notifications/")
     assert r.status_code == 401
+
+
+# ── Deduplication tests (7.2) ─────────────────────────────────────────────────
+
+async def test_deduplication_skips_duplicate_within_window():
+    """Test that duplicate notifications are skipped within 5-minute window."""
+    svc = NotificationService()
+    user_id = uuid.uuid4()
+    booking_id = str(uuid.uuid4())
+    session = make_mock_session()
+
+    # Mock existing notification with same booking_id
+    existing_notif = Notification(
+        user_id=user_id,
+        type=NotificationType.booking_confirmed,
+        title="Test",
+        body="Body",
+        data={"booking_id": booking_id},
+    )
+
+    with patch("src.services.notification_service.NotificationService._is_enabled_for_user", new_callable=AsyncMock, return_value=True):
+        with patch("src.services.notification_service.NotificationService._is_duplicate", new_callable=AsyncMock, return_value=True):
+            await svc.handle(
+                event_type="booking.confirmed",
+                payload={"booking_id": booking_id},
+                user_id=user_id,
+                session=session,
+            )
+
+    session.add.assert_not_called()
+
+
+async def test_deduplication_allows_after_window():
+    """Test that notifications are allowed after dedup window expires."""
+    svc = NotificationService()
+    user_id = uuid.uuid4()
+    booking_id = str(uuid.uuid4())
+    session = make_mock_session()
+
+    with patch("src.services.notification_service.NotificationService._push_sse", new_callable=AsyncMock):
+        with patch("src.services.notification_service.NotificationService._is_enabled_for_user", new_callable=AsyncMock, return_value=True):
+            with patch("src.services.notification_service.NotificationService._is_duplicate", new_callable=AsyncMock, return_value=False):
+                with patch("src.services.notification_service.NotificationService._send_email", new_callable=AsyncMock):
+                    await svc.handle(
+                        event_type="booking.confirmed",
+                        payload={"booking_id": booking_id},
+                        user_id=user_id,
+                        session=session,
+                    )
+
+    session.add.assert_called()
+
+
+# ── Email integration tests (7.1) ────────────────────────────────────────────
+
+async def test_email_sent_on_booking_event():
+    """Test that email is queued when booking event fires."""
+    svc = NotificationService()
+    user_id = uuid.uuid4()
+    booking_id = str(uuid.uuid4())
+    session = make_mock_session()
+
+    # Mock booking with user
+    mock_booking = MagicMock()
+    mock_booking.user_id = user_id
+    mock_booking.vendor_id = None
+    mock_booking.event_name = "Test Event"
+    mock_booking.event_date = "2026-05-15"
+    session.get = AsyncMock(return_value=mock_booking)
+
+    with patch("src.services.notification_service.NotificationService._push_sse", new_callable=AsyncMock):
+        with patch("src.services.notification_service.NotificationService._is_enabled_for_user", new_callable=AsyncMock, return_value=True):
+            with patch("src.services.notification_service.NotificationService._is_duplicate", new_callable=AsyncMock, return_value=False):
+                with patch("src.services.notification_service.NotificationService._send_email", new_callable=AsyncMock) as mock_email:
+                    await svc.handle(
+                        event_type="booking.confirmed",
+                        payload={"booking_id": booking_id},
+                        user_id=user_id,
+                        session=session,
+                    )
+
+    mock_email.assert_called_once()

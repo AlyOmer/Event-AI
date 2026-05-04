@@ -84,14 +84,34 @@ async def get_booking(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
-    """Get booking details by ID."""
+    """Get booking details by ID.
+
+    Access is granted to:
+    - The customer who made the booking (booking.user_id == current_user.id)
+    - The vendor whose service is booked (booking.vendor_id matches current user's vendor)
+    - Admins
+    """
+    from sqlalchemy import select as sa_select
+    from src.models.vendor import Vendor
+
     booking = await booking_service.get_by_id(session, booking_id)
     if not booking:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "NOT_FOUND_BOOKING", "message": "Booking not found."},
         )
-    if booking.user_id != current_user.id and current_user.role != "admin":
+
+    # Check if current user is the customer
+    is_customer = booking.user_id == current_user.id
+    # Check if current user is the vendor
+    vendor = (
+        await session.execute(sa_select(Vendor).where(Vendor.user_id == current_user.id))
+    ).scalar_one_or_none()
+    is_vendor = vendor is not None and booking.vendor_id == vendor.id
+    # Check admin
+    is_admin = current_user.role == "admin"
+
+    if not (is_customer or is_vendor or is_admin):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "AUTH_FORBIDDEN", "message": "Not authorized to access this booking."},

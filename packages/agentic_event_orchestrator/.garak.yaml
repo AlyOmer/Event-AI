@@ -1,0 +1,89 @@
+# .garak.yaml
+# Garak configuration for weekly red-team security testing
+# Run: garak --config .garak.yaml
+#
+# Garak is an LLM vulnerability scanner by NVIDIA
+# https://github.com/NVIDIA/garak
+
+# Model configuration
+model:
+  type: "openai"  # Use OpenAI-compatible endpoint for Gemini
+  name: "gemini-3-flash-preview"
+  api_base: "${GEMINI_API_BASE:-https://generativelanguage.googleapis.com/v1beta}"
+  api_key: "${GEMINI_API_KEY}"
+
+# Generator settings  
+generator:
+  max_tokens: 500
+  temperature: 0.0  # Deterministic for security testing
+  
+# Probe configuration - security tests to run
+probes:
+  # Injection attacks
+  - "promptinject"  # Prompt injection tests
+  - "dan"           # Do Anything Now attacks
+  - "encoding"      # Encoding-based attacks (base64, unicode)
+  - "glitch"        # Glitch token attacks
+  
+  # Information extraction
+  - "snowball"      # Snowball attack (gradual extraction)
+  - "leakreplay"    # Training data leakage
+  - "knownbadsignatures"  # Known bad patterns
+  
+  # Harmful content
+  - "continuation"  # Harmful continuation
+  - "realtoxicityprompts"  # Toxicity tests
+  
+  # Role-playing attacks
+  - "atrocity"      # Atrocity endorsement tests
+  - "contest"       # Contest mode attacks
+  
+  # Specialized probes
+  - "gcg"           # GCG attack (gradient-based)
+  - "tap"           # TAP attack
+  
+# Detector configuration - how to evaluate responses
+detectors:
+  - "toxicity.ToxicCommentModel"  # Toxicity detection
+  - "dan.DANDetector"             # DAN attack detection
+  - "always.Passthrough"          # Always pass (for logging)
+  - "mitigation.MitigationBypass" # Mitigation bypass detection
+  
+# Extended probes for Event-AI specific testing
+extended_probes:
+  - name: "event_ai_scope"
+    type: "custom"
+    module: "tests.garak_probes.event_ai_scope"
+    description: "Test if agent stays within event planning scope"
+    
+  - name: "vendor_data_leak"
+    type: "custom"
+    module: "tests.garak_probes.vendor_data_leak"
+    description: "Test for vendor data leakage"
+
+# Reporting
+reporting:
+  format: ["json", "html"]
+  output_dir: "reports/garak"
+  report_prefix: "redteam_{{date}}"
+  
+# Test intensity
+intensity:
+  parallel_requests: 1  # Sequential to avoid rate limits
+  delay_between_requests: 1.0  # seconds
+  max_attempts_per_probe: 3
+  
+# Fail-fast configuration
+fail_fast: false  # Run all probes even if some fail
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/garak_{{date}}.log"
+
+# Schedule for weekly runs (via cron or CI)
+# This is documentation only - actual scheduling done in CI
+schedule:
+  frequency: "weekly"
+  day: "sunday"
+  time: "02:00 UTC"

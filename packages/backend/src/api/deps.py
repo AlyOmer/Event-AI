@@ -1,8 +1,9 @@
 """
 Dependency injection helpers for API routes.
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config.database import get_session
@@ -43,3 +44,14 @@ async def require_admin(
 def get_event_bus() -> EventBusService:
     """Dependency injection for the domain event bus."""
     return event_bus
+
+
+def get_http_client(request: Request) -> httpx.AsyncClient:
+    """
+    FastAPI dependency that returns the shared httpx.AsyncClient from app.state.
+
+    The client is initialised in the FastAPI lifespan (database.py) and stored
+    on app.state.http_client. Routes use Depends(get_http_client) instead of
+    accessing request.app.state.http_client directly.
+    """
+    return request.app.state.http_client

@@ -123,3 +123,103 @@ async def feedback_stats(
             "thumbs_down": down_count.scalar_one_or_none() or 0,
         }
     })
+
+
+@router.get("/faithfulness")
+async def get_faithfulness_metrics(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    session_id: Optional[str] = Query(None),
+    limit: int = Query(20, le=100),
+    _=Depends(_require_admin),
+):
+    """
+    Get RAG faithfulness evaluation metrics.
+    
+    Returns recent RAG Triad evaluations:
+    - Context Relevance
+    - Groundedness (hallucination risk indicator)
+    - Answer Relevance
+    
+    If session_id provided, filter to that session.
+    """
+    from services.trulens_evaluator import trulens_evaluator
+    import uuid
+    
+    # For now, return summary stats and recent evaluations
+    # In production, these would be stored in a dedicated evaluation table
+    
+    # Get recent messages with agent responses for evaluation
+    query = select(Message).where(
+        Message.role == "assistant",
+        Message.agent_name == "VendorDiscoveryAgent"
+    ).order_by(Message.created_at.desc()).limit(limit)
+    
+    if session_id:
+        try:
+            sid = uuid.UUID(session_id)
+            query = query.where(Message.session_id == sid)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid session_id")
+    
+    result = await db.execute(query)
+    messages = result.scalars().all()
+    
+    evaluations = []
+    hallucination_count = 0
+    
+    for msg in messages:
+        # Get the preceding user message for context
+        user_msg_result = await db.execute(
+            select(Message).where(
+                Message.session_id == msg.session_id,
+                Message.role == "user",
+                Message.sequence < msg.sequence
+            ).order_by(Message.sequence.desc()).limit(1)
+        )
+        user_msg = user_msg_result.scalar_one_or_none()
+        
+        if user_msg:
+            # Run evaluation (async)
+            eval_result = await trulens_evaluator.evaluate(
+                question=user_msg.content,
+                answer=msg.content,
+                context=[],  # Would need to retrieve from RAG context store
+                session_id=str(msg.session_id),
+            )
+            
+            if eval_result.hallucination_risk:
+                hallucination_count += 1
+            
+            evaluations.append({
+                "message_id": str(msg.id),
+                "session_id": str(msg.session_id),
+                "context_relevance": eval_result.context_relevance,
+                "groundedness": eval_result.groundedness,
+                "answer_relevance": eval_result.answer_relevance,
+                "hallucination_risk": eval_result.hallucination_risk,
+                "timestamp": eval_result.timestamp,
+            })
+    
+    # Calculate aggregate metrics
+    if evaluations:
+        avg_groundedness = sum(e["groundedness"] for e in evaluations) / len(evaluations)
+        avg_context_relevance = sum(e["context_relevance"] for e in evaluations) / len(evaluations)
+        avg_answer_relevance = sum(e["answer_relevance"] for e in evaluations) / len(evaluations)
+    else:
+        avg_groundedness = avg_context_relevance = avg_answer_relevance = 0.0
+    
+    return JSONResponse(content={
+        "success": True,
+        "data": {
+            "summary": {
+                "total_evaluations": len(evaluations),
+                "hallucination_risks": hallucination_count,
+                "avg_groundedness": round(avg_groundedness, 3),
+                "avg_context_relevance": round(avg_context_relevance, 3),
+                "avg_answer_relevance": round(avg_answer_relevance, 3),
+                "groundedness_threshold": trulens_evaluator._groundedness_threshold,
+            },
+            "evaluations": evaluations[:10],  # Return top 10
+        }
+    })

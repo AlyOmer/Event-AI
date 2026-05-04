@@ -4,19 +4,23 @@ writes Notification rows atomically in the same DB session, and pushes
 to SSE via ConnectionManager.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from src.models.notification import Notification, NotificationType, NotificationRead
 from src.models.booking import Booking
 from src.models.vendor import Vendor
+from src.models.user import User
 import structlog
 
 logger = structlog.get_logger()
+
+# Deduplication window (5 minutes)
+_DEDUP_WINDOW_MINUTES = 5
 
 # domain event type → (NotificationType, title, body_template)
 _EVENT_MAP: Dict[str, Tuple[NotificationType, str, str]] = {
@@ -84,6 +88,11 @@ class NotificationService:
             if not await self._is_enabled_for_user(session, recipient_id, notif_type):
                 return
 
+            # Deduplication check for event/vendor events
+            event_id = payload.get("event_id") or payload.get("vendor_id")
+            if await self._is_duplicate(session, recipient_id, event_type, event_id):
+                return
+
             notif = Notification(
                 user_id=recipient_id,
                 type=notif_type,
@@ -94,7 +103,7 @@ class NotificationService:
             session.add(notif)
             await session.flush()
             await self._push_sse(recipient_id, notif)
-            self._log_email(recipient_id, title, body)
+            await self._send_email(session, recipient_id, title, body, event_type)
             return
 
         # Booking events — resolve via ORM lookup
@@ -120,6 +129,11 @@ class NotificationService:
         if not await self._is_enabled_for_user(session, recipient_id, notif_type):
             return
 
+        # Deduplication check
+        event_id = payload.get("booking_id") or payload.get("event_id")
+        if await self._is_duplicate(session, recipient_id, event_type, event_id):
+            return
+
         notif = Notification(
             user_id=recipient_id,
             type=notif_type,
@@ -130,12 +144,20 @@ class NotificationService:
         session.add(notif)
         await session.flush()
         await self._push_sse(recipient_id, notif)
-        self._log_email(recipient_id, title, body)
+        await self._send_email(session, recipient_id, title, body, event_type, booking)
 
-        # Vendor notification for booking.created
+        # Vendor notification for booking.created (7.3 - already implemented)
         if event_type == "booking.created" and booking and booking.vendor_id:
             vendor: Optional[Vendor] = await session.get(Vendor, booking.vendor_id)
             if vendor and vendor.user_id:
+                # Check vendor preference
+                if not await self._is_enabled_for_user(session, vendor.user_id, NotificationType.booking_created):
+                    return
+
+                # Deduplication for vendor
+                if await self._is_duplicate(session, vendor.user_id, event_type, event_id):
+                    return
+
                 vendor_body = f"You have a new booking request for {getattr(booking, 'event_name', None) or 'your event'} on {getattr(booking, 'event_date', '')}."
                 vendor_notif = Notification(
                     user_id=vendor.user_id,
@@ -147,7 +169,10 @@ class NotificationService:
                 session.add(vendor_notif)
                 await session.flush()
                 await self._push_sse(vendor.user_id, vendor_notif)
-                self._log_email(vendor.user_id, "New Booking Request", vendor_body)
+                await self._send_email(
+                    session, vendor.user_id, "New Booking Request", vendor_body,
+                    "new_booking_request", booking
+                )
 
     async def _is_enabled_for_user(
         self, session: AsyncSession, user_id: uuid.UUID, notif_type: NotificationType
@@ -173,8 +198,94 @@ class NotificationService:
         except Exception as e:
             logger.warning("sse.push_failed", error=str(e))
 
-    def _log_email(self, recipient_id: uuid.UUID, title: str, body: str) -> None:
-        logger.info("email.queued", recipient_id=str(recipient_id), title=title)
+    async def _send_email(
+        self,
+        session: AsyncSession,
+        recipient_id: uuid.UUID,
+        title: str,
+        body: str,
+        event_type: str,
+        booking: Optional[Booking] = None,
+    ) -> None:
+        """Send email notification to user (fire-and-forget)."""
+        try:
+            # Fetch user email
+            user = await session.get(User, recipient_id)
+            if not user or not user.email:
+                logger.warning("email.no_recipient", recipient_id=str(recipient_id))
+                return
+
+            from src.services.email_service import email_service
+
+            vendor_name = ""
+            event_date = ""
+            event_name = ""
+
+            if booking:
+                vendor_name = getattr(booking, "vendor_name", "") or ""
+                event_date = str(getattr(booking, "event_date", ""))
+                event_name = getattr(booking, "event_name", "") or "your event"
+                # Fetch vendor name if not on booking
+                if not vendor_name and booking.vendor_id:
+                    vendor = await session.get(Vendor, booking.vendor_id)
+                    if vendor:
+                        vendor_name = vendor.business_name
+
+            subject, html_body = email_service.render_booking_email(
+                event_type=event_type,
+                vendor_name=vendor_name or "Event-AI Vendor",
+                event_date=event_date,
+                event_name=event_name,
+            )
+
+            await email_service.send_email(
+                to=user.email,
+                subject=subject,
+                body_html=html_body,
+                body_text=body,
+            )
+            logger.info("email.queued", recipient_id=str(recipient_id), title=subject)
+        except Exception as e:
+            logger.warning("email.send_error", recipient_id=str(recipient_id), error=str(e))
+
+    async def _is_duplicate(
+        self,
+        session: AsyncSession,
+        user_id: uuid.UUID,
+        event_type: str,
+        event_id: Optional[str] = None,
+    ) -> bool:
+        """Check for duplicate notification within 5-minute window."""
+        if not event_id:
+            return False
+
+        window_start = datetime.now(timezone.utc) - timedelta(minutes=_DEDUP_WINDOW_MINUTES)
+
+        # Check by data->booking_id or data->event_id
+        result = await session.execute(
+            select(Notification)
+            .where(
+                Notification.user_id == user_id,
+                Notification.type == NotificationType[event_type.replace(".", "_")],
+                Notification.created_at >= window_start,
+            )
+            .limit(1)
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing and existing.data:
+            # Check if same event_id in data
+            existing_event_id = existing.data.get("booking_id") or existing.data.get("event_id")
+            if existing_event_id == event_id:
+                logger.info(
+                    "notification.deduplicated",
+                    user_id=str(user_id),
+                    event_type=event_type,
+                    event_id=event_id,
+                )
+                return True
+
+        return False
 
     # ── REST helpers ──────────────────────────────────────────────────────────
 

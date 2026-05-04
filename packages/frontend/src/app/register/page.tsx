@@ -117,8 +117,7 @@ export default function RegisterPage() {
         }
         clearError();
 
-        // Strip empty optional fields — backend Zod rejects "" for url/phone validators
-        const payload: any = {
+        const payload: Record<string, unknown> = {
             vendorName: data.vendorName,
             contactEmail: data.contactEmail,
             firstName: data.firstName,
@@ -126,6 +125,7 @@ export default function RegisterPage() {
             email: data.email,
             password: data.password,
             confirmPassword: data.confirmPassword,
+            role: 'vendor',
         };
         if (data.businessType) payload.businessType = data.businessType;
         if (data.phone) payload.phone = data.phone;

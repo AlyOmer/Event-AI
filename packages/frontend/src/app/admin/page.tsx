@@ -73,7 +73,7 @@ export default function AdminDashboard() {
             return;
         }
         // Only admin and owner roles can access this page
-        if (hasMounted && isAuthenticated && user?.role !== 'admin' && user?.role !== 'owner') {
+        if (hasMounted && isAuthenticated && user?.role !== 'admin') {
             router.push('/dashboard');
         }
     }, [hasMounted, isAuthenticated, user?.role, router]);

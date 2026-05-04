@@ -14,6 +14,7 @@ from src.api.v1.admin.categories import router as admin_categories_router
 from src.api.v1.admin.stats import router as admin_stats_router
 from src.api.v1.admin.vendors import router as admin_vendors_router
 from src.api.v1.admin.users import router as admin_users_router
+from src.api.v1.admin.embeddings import router as admin_embeddings_router
 from src.api.v1.services import router as services_router
 from src.api.v1.inquiries import router as inquiries_router
 from src.api.v1.uploads import router as uploads_router
@@ -106,6 +107,7 @@ app.include_router(admin_categories_router, prefix="/api/v1/admin/categories")
 app.include_router(admin_stats_router, prefix="/api/v1/admin/stats")
 app.include_router(admin_vendors_router, prefix="/api/v1/admin/vendors")
 app.include_router(admin_users_router, prefix="/api/v1/admin/users")
+app.include_router(admin_embeddings_router, prefix="/api/v1/admin/embeddings")
 app.include_router(services_router, prefix="/api/v1/services")
 app.include_router(inquiries_router, prefix="/api/v1/inquiries")
 app.include_router(uploads_router, prefix="/api/v1/uploads")

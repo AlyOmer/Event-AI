@@ -46,6 +46,39 @@ class Settings(BaseSettings):
     seed_admin_email: Optional[str] = Field(default=None)
     seed_admin_password: Optional[str] = Field(default=None)
 
+    # SMTP / Email Settings
+    smtp_host: Optional[str] = Field(default=None, description="SMTP server hostname")
+    smtp_port: int = Field(default=587, description="SMTP server port")
+    smtp_secure: bool = Field(default=False, description="Use TLS for SMTP connection")
+    smtp_user: Optional[str] = Field(default=None, description="SMTP authentication username")
+    smtp_password: Optional[str] = Field(default=None, description="SMTP authentication password")
+    email_from: str = Field(default="noreply@eventai.pk", description="Default sender email address")
+
+    # Gemini API
+    gemini_api_key: Optional[str] = Field(default=None, description="Gemini API key for embedding and AI features")
+
+    # RAG / Embedding
+    gemini_embedding_model: str = Field(
+        default="text-embedding-004",
+        description="Gemini embedding model name",
+    )
+    gemini_base_url: str = Field(
+        default="https://generativelanguage.googleapis.com/v1beta/openai/",
+        description="Gemini OpenAI-compatible base URL",
+    )
+    embedding_dimensions: int = Field(
+        default=768,
+        description="Number of embedding dimensions produced by the embedding model",
+    )
+    hybrid_trigram_weight: float = Field(
+        default=0.3,
+        description="Weight applied to trigram (keyword) scores in hybrid search (must sum to 1.0 with hybrid_semantic_weight)",
+    )
+    hybrid_semantic_weight: float = Field(
+        default=0.7,
+        description="Weight applied to semantic scores in hybrid search (must sum to 1.0 with hybrid_trigram_weight)",
+    )
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @field_validator("database_url", mode="before")
@@ -150,6 +183,10 @@ async def lifespan(app):
     from src.services.sse_manager import SSEConnectionManager
     app.state.connection_manager = SSEConnectionManager()
 
+    # Shared httpx.AsyncClient for outbound HTTP calls (e.g. Gemini embeddings API)
+    import httpx
+    app.state.http_client = httpx.AsyncClient(timeout=30.0)
+
     # Register notification listeners in lifespan (constitution: init in lifespan, not at import)
     from src.services.event_bus_service import event_bus
     from src.services.notification_service import notification_service
@@ -163,6 +200,29 @@ async def lifespan(app):
     ):
         event_bus.subscribe(_et, notification_service.handle)
 
+    # Register embedding event handlers — use closures to inject http_client
+    from src.services.embedding_service import embedding_service
+
+    async def _handle_vendor_approved(
+        event_type: str, payload: dict, user_id, *, session=None
+    ) -> None:
+        await embedding_service.handle_vendor_approved(
+            event_type, payload, user_id,
+            session=session,
+            http_client=app.state.http_client,
+        )
+
+    async def _handle_vendor_deactivated(
+        event_type: str, payload: dict, user_id, *, session=None
+    ) -> None:
+        await embedding_service.handle_vendor_deactivated(
+            event_type, payload, user_id, session=session
+        )
+
+    event_bus.subscribe("vendor.approved", _handle_vendor_approved)
+    event_bus.subscribe("vendor.rejected", _handle_vendor_deactivated)
+    event_bus.subscribe("vendor.suspended", _handle_vendor_deactivated)
+
     cleanup_task = asyncio.create_task(_cleanup_expired_locks())
     yield
     cleanup_task.cancel()
@@ -170,4 +230,5 @@ async def lifespan(app):
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    await app.state.http_client.aclose()
     await engine.dispose()

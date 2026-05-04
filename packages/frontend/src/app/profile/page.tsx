@@ -1,230 +1,166 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { User, Building2, Mail, Phone, Globe, MapPin, Shield, Loader2, Save, CheckCircle } from 'lucide-react';
-import { useAuthStore } from '@/lib/auth-store';
-import { api, getApiError } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Loader2, Edit2, X } from 'lucide-react';
+import { VendorLayout } from '@/components/vendor-layout';
+import { useVendorProfile, useUpdateProfile } from '@/lib/hooks/use-vendor-profile';
+import { cn } from '@/lib/utils';
+
+const STATUS_COLORS: Record<string, string> = {
+    PENDING: 'bg-yellow-100 text-yellow-700',
+    ACTIVE: 'bg-green-100 text-green-700',
+    SUSPENDED: 'bg-orange-100 text-orange-700',
+    REJECTED: 'bg-red-100 text-red-700',
+};
+
+const schema = z.object({
+    business_name: z.string().min(1, 'Business name is required').max(255),
+    description: z.string().max(2000).optional(),
+    contact_email: z.string().email('Invalid email'),
+    contact_phone: z.string().optional(),
+    website: z.string()
+        .optional()
+        .refine(
+            (v) => !v || v.startsWith('http://') || v.startsWith('https://'),
+            { message: 'Website must start with http:// or https://' }
+        ),
+    city: z.string().optional(),
+    region: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export default function ProfilePage() {
-    const router = useRouter();
-    const { isAuthenticated, user, vendor } = useAuthStore();
     const [editing, setEditing] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [success, setSuccess] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [hasMounted, setHasMounted] = useState(false);
-    const [formData, setFormData] = useState({
-        name: '',
-        description: '',
-        contactEmail: '',
-        phone: '',
-        website: '',
+    const { data: vendor, isLoading } = useVendorProfile();
+    const update = useUpdateProfile();
+
+    const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+        resolver: zodResolver(schema),
     });
-
-    useEffect(() => { setHasMounted(true); }, []);
-
-    useEffect(() => {
-        if (hasMounted && !isAuthenticated) {
-            router.push('/login');
-        }
-    }, [hasMounted, isAuthenticated, router]);
 
     useEffect(() => {
         if (vendor) {
-            setFormData({
-                name: vendor.name || '',
-                description: vendor.description || '',
-                contactEmail: vendor.contactEmail || '',
-                phone: vendor.phone || '',
-                website: vendor.website || '',
+            reset({
+                business_name: vendor.businessName,
+                description: vendor.description ?? '',
+                contact_email: vendor.contactEmail,
+                contact_phone: vendor.contactPhone ?? '',
+                website: vendor.website ?? '',
+                city: vendor.city ?? '',
+                region: vendor.region ?? '',
             });
         }
-    }, [vendor]);
+    }, [vendor, reset]);
 
-    if (!hasMounted || !isAuthenticated) {
-        return (
-            <div className="flex min-h-screen items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-            </div>
-        );
-    }
+    const onSubmit = async (values: FormValues) => {
+        await update.mutateAsync({
+            business_name: values.business_name,
+            description: values.description || undefined,
+            contact_email: values.contact_email,
+            contact_phone: values.contact_phone || undefined,
+            website: values.website || undefined,
+            city: values.city || undefined,
+            region: values.region || undefined,
+        } as Parameters<typeof update.mutateAsync>[0]);
+        setEditing(false);
+    };
 
-    const handleSave = async () => {
-        // Validate required fields
-        if (!formData.name?.trim()) {
-            setError('Business name is required');
-            return;
+    const handleCancel = () => {
+        if (vendor) {
+            reset({
+                business_name: vendor.businessName,
+                description: vendor.description ?? '',
+                contact_email: vendor.contactEmail,
+                contact_phone: vendor.contactPhone ?? '',
+                website: vendor.website ?? '',
+                city: vendor.city ?? '',
+                region: vendor.region ?? '',
+            });
         }
-        if (formData.contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contactEmail)) {
-            setError('Please enter a valid email address');
-            return;
-        }
-        if (formData.website && formData.website.trim() && !/^https?:\/\/.+/.test(formData.website)) {
-            setError('Website must start with http:// or https://');
-            return;
-        }
-
-        setSaving(true);
-        setError(null);
-        setSuccess(false);
-        try {
-            await api.put('/vendors/me', formData);
-            setSuccess(true);
-            setEditing(false);
-            setTimeout(() => setSuccess(false), 3000);
-        } catch (err: any) {
-            setError(getApiError(err));
-        } finally {
-            setSaving(false);
-        }
+        setEditing(false);
     };
 
     return (
-        <div className="space-y-6 max-w-3xl">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-surface-900">Profile</h1>
-                    <p className="text-surface-500 mt-1">Manage your vendor profile and business information</p>
-                </div>
-                {!editing ? (
-                    <button
-                        onClick={() => setEditing(true)}
-                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-                    >
-                        Edit Profile
-                    </button>
-                ) : (
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setEditing(false)}
-                            className="px-4 py-2 bg-surface-100 text-surface-700 rounded-lg hover:bg-surface-200 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center gap-2 disabled:opacity-50"
-                        >
-                            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            Save Changes
-                        </button>
+        <VendorLayout>
+            <div className="mx-auto max-w-2xl space-y-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-50">Profile</h1>
+                        <p className="mt-1 text-surface-500">Manage your business information</p>
                     </div>
+                    {vendor && !editing && (
+                        <button onClick={() => setEditing(true)} className="flex items-center gap-2 rounded-lg border border-surface-300 px-4 py-2 text-sm hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800">
+                            <Edit2 className="h-4 w-4" /> Edit Profile
+                        </button>
+                    )}
+                </div>
+
+                {isLoading ? (
+                    <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary-600" /></div>
+                ) : (
+                    <form onSubmit={handleSubmit(onSubmit)} className="rounded-xl border border-surface-200 bg-white p-6 space-y-5 dark:border-surface-800 dark:bg-surface-900">
+                        {/* Status badge (read-only) */}
+                        {vendor && (
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm text-surface-500">Approval Status:</span>
+                                <span className={cn('rounded-full px-3 py-0.5 text-xs font-medium', STATUS_COLORS[vendor.status] ?? 'bg-gray-100 text-gray-600')}>
+                                    {vendor.status}
+                                </span>
+                            </div>
+                        )}
+
+                        {[
+                            { label: 'Business Name *', name: 'business_name' as const },
+                            { label: 'Contact Email *', name: 'contact_email' as const },
+                            { label: 'Contact Phone', name: 'contact_phone' as const },
+                            { label: 'Website', name: 'website' as const },
+                            { label: 'City', name: 'city' as const },
+                            { label: 'Region', name: 'region' as const },
+                        ].map(({ label, name }) => (
+                            <div key={name}>
+                                <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">{label}</label>
+                                <input
+                                    {...register(name)}
+                                    disabled={!editing}
+                                    className={cn(
+                                        'mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:bg-surface-800',
+                                        editing ? 'border-surface-300 dark:border-surface-700' : 'border-transparent bg-surface-50 dark:bg-surface-800/50 text-surface-700 dark:text-surface-300'
+                                    )}
+                                />
+                                {errors[name] && <p className="mt-1 text-xs text-red-500">{errors[name]?.message}</p>}
+                            </div>
+                        ))}
+
+                        <div>
+                            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300">Description</label>
+                            <textarea
+                                {...register('description')}
+                                disabled={!editing}
+                                rows={3}
+                                className={cn(
+                                    'mt-1 w-full rounded-lg border px-3 py-2 text-sm focus:border-primary-500 focus:outline-none dark:bg-surface-800',
+                                    editing ? 'border-surface-300 dark:border-surface-700' : 'border-transparent bg-surface-50 dark:bg-surface-800/50 text-surface-700 dark:text-surface-300'
+                                )}
+                            />
+                        </div>
+
+                        {editing && (
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button type="button" onClick={handleCancel} className="flex items-center gap-2 rounded-lg border border-surface-300 px-4 py-2 text-sm hover:bg-surface-50">
+                                    <X className="h-4 w-4" /> Cancel
+                                </button>
+                                <button type="submit" disabled={update.isPending} className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50">
+                                    {update.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Save Changes
+                                </button>
+                            </div>
+                        )}
+                    </form>
                 )}
             </div>
-
-            {success && (
-                <div className="flex items-center gap-2 p-4 bg-green-50 text-green-700 rounded-xl border border-green-200">
-                    <CheckCircle className="h-5 w-5" />
-                    Profile updated successfully
-                </div>
-            )}
-            {error && (
-                <div className="p-4 bg-red-50 text-red-700 rounded-xl border border-red-200">{error}</div>
-            )}
-
-            {/* User Info */}
-            <div className="bg-white rounded-xl shadow-sm border border-surface-100 p-6">
-                <div className="flex items-center gap-4 mb-6">
-                    <div className="h-16 w-16 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center text-xl font-bold">
-                        {user?.firstName?.[0]}{user?.lastName?.[0]}
-                    </div>
-                    <div>
-                        <h2 className="text-lg font-semibold text-surface-900">{user?.firstName} {user?.lastName}</h2>
-                        <p className="text-surface-500">{user?.email}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${vendor?.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                {vendor?.status}
-                            </span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                                {vendor?.tier} Tier
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Business Info */}
-            <div className="bg-white rounded-xl shadow-sm border border-surface-100 p-6 space-y-5">
-                <h3 className="text-lg font-semibold text-surface-900 flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-primary-600" />
-                    Business Information
-                </h3>
-
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-surface-700 mb-1">Business Name</label>
-                        {editing ? (
-                            <input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full rounded-lg border border-surface-300 px-4 py-2.5 focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                        ) : (
-                            <p className="text-surface-900 py-2">{vendor?.name}</p>
-                        )}
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-surface-700 mb-1">Description</label>
-                        {editing ? (
-                            <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows={3} className="w-full rounded-lg border border-surface-300 px-4 py-2.5 focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                        ) : (
-                            <p className="text-surface-900 py-2">{vendor?.description || 'No description'}</p>
-                        )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
-                            {editing ? (
-                                <input value={formData.contactEmail} onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                            ) : (
-                                <p className="text-gray-900 py-2 flex items-center gap-2"><Mail className="h-4 w-4 text-gray-400" />{vendor?.contactEmail}</p>
-                            )}
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                            {editing ? (
-                                <input value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                            ) : (
-                                <p className="text-gray-900 py-2 flex items-center gap-2"><Phone className="h-4 w-4 text-gray-400" />{vendor?.phone || 'Not set'}</p>
-                            )}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Website</label>
-                        {editing ? (
-                            <input value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
-                        ) : (
-                            <p className="text-gray-900 py-2 flex items-center gap-2"><Globe className="h-4 w-4 text-gray-400" />{vendor?.website || 'Not set'}</p>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Security */}
-            <div className="bg-white rounded-xl shadow-sm border border-surface-100 p-6">
-                <h3 className="text-lg font-semibold text-surface-900 flex items-center gap-2 mb-4">
-                    <Shield className="h-5 w-5 text-primary-600" />
-                    Security
-                </h3>
-                <div className="space-y-3">
-                    <div className="flex items-center justify-between py-3 border-b border-surface-100">
-                        <div>
-                            <p className="font-medium text-surface-900">Two-Factor Authentication</p>
-                            <p className="text-sm text-surface-500">Add an extra layer of security</p>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${user?.twoFactorEnabled ? 'bg-green-100 text-green-800' : 'bg-surface-100 text-surface-600'}`}>
-                            {user?.twoFactorEnabled ? 'Enabled' : 'Disabled'}
-                        </span>
-                    </div>
-                    <div className="flex items-center justify-between py-3">
-                        <div>
-                            <p className="font-medium text-surface-900">Email Verification</p>
-                            <p className="text-sm text-surface-500">Verify your email address</p>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${user?.emailVerified ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {user?.emailVerified ? 'Verified' : 'Unverified'}
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
+        </VendorLayout>
     );
 }

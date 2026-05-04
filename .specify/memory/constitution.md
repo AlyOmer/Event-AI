@@ -1,24 +1,24 @@
 <!--
 SYNC IMPACT REPORT (Constitution Update)
 ========================================
-Version change: 2.0.1 → 2.1.0 (MINOR bump: adding MCP integration and monetization framework)
-Date: 2026-04-27
+Version change: 2.1.0 → 2.2.0 (MINOR bump: terminology — RAG → Agentic RAG throughout)
+Date: 2026-05-01
 
 Modified sections:
-- Fixed duplicate section numbering: second "VII" (Agent Architecture) renumbered to VIII;
-  all subsequent sections renumbered (VIII→IX, IX→X, X→XI)
-- III. Event-Driven Architecture: Expanded domain events taxonomy with full payment.* events
-  and vendor.suspended event; added payment.refunded and payment.failed events
-- New Section IX: MCP Protocol Integration — standards for Model Context Protocol tool servers
-  used by the AI agent service to access database, logs, and IDE context
-- New Section XII: Monetization & Usage Framework — subscription plans, usage metering,
-  billing integration standards, and agent monetization hooks
-- Anti-Patterns: Added MCP misuse patterns and monetization bypass patterns
-- Definition of Done: Added MCP compliance and monetization compliance checklist items
-- Performance Standards: Added MCP tool call latency target
+- Section VII title: "Augmented Memory & RAG Architecture" → "Augmented Memory & Agentic RAG Architecture"
+- Section VII body: all "RAG" references updated to "Agentic RAG"
+- AI Layer stack table: "RAG Framework" row updated to "Agentic RAG Framework"
+- Anti-Patterns: Updated LangChain anti-pattern description to reference "Agentic RAG"
+- CLAUDE.md and AGENTS.md updated in sync (3 occurrences each)
+
+Rationale: "Agentic RAG" is more precise — it signals that an agent orchestrates the
+retrieval process (query planning, multi-step retrieval, synthesis), not just a passive
+vector lookup pipeline. This distinction is architecturally significant and prevents
+misuse of LangChain for orchestration.
 
 Previous update history:
-- 2.0.0 (2026-04-08): MAJOR bump — switched backend from Node.js to Python
+- 2.1.0 (2026-04-27): MINOR — MCP Protocol Integration + Monetization Framework
+- 2.0.0 (2026-04-08): MAJOR — switched backend from Node.js to Python
 - 1.3.1 → 2.0.0: Node.js/Fastify/Prisma/Zod → Python/FastAPI/SQLModel/Pydantic
 
 TODOs:
@@ -99,7 +99,7 @@ The following stack is the canonical choice. Deviations require an ADR with docu
 | HTTP Client | `httpx.AsyncClient` (initialized in lifespan) |
 | Streaming | `sse-starlette` (Server-Sent Events) |
 | Vector Search | pgvector in Neon DB (unified storage) |
-| RAG Framework | LangChain (strictly for doc processing/retrieval, NOT orchestration) |
+| Agentic RAG Framework | LangChain (strictly for doc processing/retrieval, NOT orchestration) |
 | Agent Memory | Mem0 (for persistent cross-session augmented memory) |
 | Testing | `pytest-asyncio`, `httpx`, `respx` (for LLM HTTP mocking) |
 | DI | FastAPI `Depends()` for all shared resources |
@@ -242,16 +242,16 @@ All inter-service communication uses strictly versioned, Pydantic-validated REST
 
 ---
 
-### VII. Augmented Memory & RAG Architecture
+### VII. Augmented Memory & Agentic RAG Architecture
 
-The AI Agent relies on robust Vector Database and Augmented Memory patterns (Agent Factory Best Practices).
+The AI Agent relies on robust Vector Database and Augmented Memory patterns (Agent Factory Best Practices). "Agentic RAG" means an agent orchestrates the retrieval process — planning queries, executing multi-step retrieval, and synthesising results — rather than a passive single-shot vector lookup.
 
 1. **Strict Framework Separation:**
-   - Use **LangChain** explicitly for document processing, chunking, and semantic retrieval chains.
+   - Use **LangChain** explicitly for document processing, chunking, and semantic retrieval chains (the retrieval layer of Agentic RAG).
    - Use **OpenAI Agents SDK** explicitly for agent orchestration, tool calling, and flow management. Do NOT use LangChain's agent orchestrators.
 2. **Vector Stores:** Use pgvector in Neon DB for all semantic search and embedding storage to minimize infrastructure overhead and unify the persistence layer.
 3. **Augmented Memory with Mem0:** Use Mem0 to persist cross-session memory for agents so they recall user preferences, past event planning details, and context across separate interactions.
-4. **Evaluation:** RAG pipelines MUST be evaluated offline using LangSmith in combination with RAGAS metrics to measure context relevancy and answer faithfulness.
+4. **Evaluation:** Agentic RAG pipelines MUST be evaluated offline using LangSmith in combination with RAGAS metrics to measure context relevancy and answer faithfulness.
 
 ---
 
@@ -533,7 +533,7 @@ The following patterns found in the existing codebase are explicitly forbidden g
 | Storing passwords in JWT payload | Never store sensitive data in JWT payload; anyone can decode it |
 | Committing unmocked LLM tests | Zero LLM API calls allowed in tests. Use `respx` to mock LLM HTTP endpoints. |
 | Making N+1 DB Queries via SQLModel | Always use eager loading (e.g. `selectinload`) when fetching hierarchical data. |
-| Using LangChain for agent orchestration | LangChain is for document processing/RAG retrieval only. Use Agents SDK for orchestration. |
+| Using LangChain for agent orchestration | LangChain is for document processing/Agentic RAG retrieval only. Use Agents SDK for orchestration. |
 | Agents calling MCP servers directly | Wrap all MCP calls in `@function_tool` decorators; agents call tools, not servers |
 | MCP tools performing write operations | MCP tools are read-only; writes go through the backend REST API |
 | Hardcoded MCP server URLs in agent code | All MCP endpoints configured via `Settings` object |
@@ -608,4 +608,4 @@ A feature is "done" when:
 4. The Anti-Patterns section is a living document — add newly discovered bad practices as they are identified.
 5. See CLAUDE.md for runtime AI agent development guidance that implements these principles.
 
-**Version**: 2.1.0 | **Ratified**: 2026-04-07 | **Last Amended**: 2026-04-27
+**Version**: 2.2.0 | **Ratified**: 2026-04-07 | **Last Amended**: 2026-05-01

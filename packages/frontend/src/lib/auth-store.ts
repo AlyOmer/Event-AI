@@ -28,14 +28,14 @@ function getPendingCredentials() {
     return _pendingCredentials;
 }
 
-// ---- Map backend user shape to frontend User type ----
-function _mapUser(u: Record<string, unknown>): User {
+// ---- Map backend user shape (snake_case) to frontend User type (camelCase) ----
+export function _mapUser(u: Record<string, unknown>): User {
     return {
         id: u.id as string,
         email: u.email as string,
         firstName: (u.first_name ?? u.firstName ?? null) as string | null,
         lastName: (u.last_name ?? u.lastName ?? null) as string | null,
-        role: (u.role as User['role']) ?? 'owner',
+        role: (u.role as User['role']) ?? 'user',
         phone: (u.phone ?? null) as string | null,
         avatarUrl: (u.avatar_url ?? u.avatarUrl ?? null) as string | null,
         twoFactorEnabled: (u.two_factor_enabled ?? u.twoFactorEnabled ?? false) as boolean,
@@ -43,6 +43,25 @@ function _mapUser(u: Record<string, unknown>): User {
     };
 }
 
+// ---- Map backend vendor shape (snake_case) to frontend Vendor type (camelCase) ----
+export function _mapVendor(v: Record<string, unknown>): Vendor {
+    return {
+        id: v.id as string,
+        userId: (v.user_id ?? v.userId) as string,
+        businessName: (v.business_name ?? v.businessName ?? '') as string,
+        description: (v.description ?? null) as string | null,
+        contactEmail: (v.contact_email ?? v.contactEmail ?? '') as string,
+        contactPhone: (v.contact_phone ?? v.contactPhone ?? null) as string | null,
+        website: (v.website ?? null) as string | null,
+        logoUrl: (v.logo_url ?? v.logoUrl ?? null) as string | null,
+        city: (v.city ?? null) as string | null,
+        region: (v.region ?? null) as string | null,
+        status: (v.status as Vendor['status']) ?? 'PENDING',
+        rating: (v.rating ?? 0) as number,
+        totalReviews: (v.total_reviews ?? v.totalReviews ?? 0) as number,
+        categories: (v.categories ?? []) as CategoryRead[],
+    };
+}
 
 function setAuthCookie() {
     if (typeof document !== 'undefined') {
@@ -50,19 +69,33 @@ function setAuthCookie() {
     }
 }
 
-function clearAuthCookie() {
+function setRoleCookie(role: string) {
     if (typeof document !== 'undefined') {
-        document.cookie = 'is-authenticated=; path=/; max-age=0; SameSite=Lax';
+        document.cookie = `user-role=${role}; path=/; max-age=604800; SameSite=Lax`;
     }
 }
 
-// Types
+function clearAuthCookie() {
+    if (typeof document !== 'undefined') {
+        document.cookie = 'is-authenticated=; path=/; max-age=0; SameSite=Lax';
+        document.cookie = 'user-role=; path=/; max-age=0; SameSite=Lax';
+    }
+}
+
+// ---- Types ----
+
+export interface CategoryRead {
+    id: string;
+    name: string;
+    slug: string;
+}
+
 export interface User {
     id: string;
     email: string;
     firstName: string | null;
     lastName: string | null;
-    role: 'owner' | 'admin' | 'staff' | 'readonly';
+    role: 'user' | 'vendor' | 'admin';
     phone: string | null;
     avatarUrl: string | null;
     twoFactorEnabled: boolean;
@@ -71,20 +104,19 @@ export interface User {
 
 export interface Vendor {
     id: string;
-    name: string;
-    businessType: string | null;
-    contactEmail: string;
-    phone: string | null;
-    address: Record<string, string>;
+    userId: string;
+    businessName: string;
     description: string | null;
-    logoUrl: string | null;
+    contactEmail: string;
+    contactPhone: string | null;
     website: string | null;
-    verified: boolean;
-    status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
-    tier: 'BRONZE' | 'SILVER' | 'GOLD';
-    apiEnabled: boolean;
-    serviceAreas: string[];
-    settings: Record<string, unknown>;
+    logoUrl: string | null;
+    city: string | null;
+    region: string | null;
+    status: 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'REJECTED';
+    rating: number;
+    totalReviews: number;
+    categories: CategoryRead[];
 }
 
 interface AuthState {
@@ -147,10 +179,12 @@ export const useAuthStore = create<AuthState>()(
                     }
 
                     // Backend returns { success, data: { token, refresh_token, expires_in, user } }
-                    const { token, refresh_token, user } = response.data.data ?? response.data;
-                    setAccessToken(token ?? response.data.accessToken);
-                    setRefreshToken(refresh_token ?? response.data.refreshToken);
+                    const payload = response.data.data ?? response.data;
+                    const { token, refresh_token, user } = payload;
+                    setAccessToken(token);
+                    setRefreshToken(refresh_token);
                     setAuthCookie();
+                    setRoleCookie(user.role ?? 'user');
                     clearPendingCredentials();
 
                     set({
@@ -177,10 +211,12 @@ export const useAuthStore = create<AuthState>()(
                 setRefreshToken(refreshToken);
                 setAuthCookie();
                 try {
-                    const response = await api.get('/auth/me');
-                    const user = response.data;
+                    // Fetch user profile after OAuth callback
+                    const userResp = await api.get('/users/me');
+                    const userData = userResp.data.data ?? userResp.data;
+                    setRoleCookie(userData.role ?? 'user');
                     set({
-                        user: _mapUser(user),
+                        user: _mapUser(userData),
                         isAuthenticated: true,
                         isLoading: false,
                     });
@@ -205,10 +241,12 @@ export const useAuthStore = create<AuthState>()(
                         twoFactorCode: code,
                     });
 
-                    const { token, refresh_token, user } = response.data.data ?? response.data;
-                    setAccessToken(token ?? response.data.accessToken);
-                    setRefreshToken(refresh_token ?? response.data.refreshToken);
+                    const payload = response.data.data ?? response.data;
+                    const { token, refresh_token, user } = payload;
+                    setAccessToken(token);
+                    setRefreshToken(refresh_token);
                     setAuthCookie();
+                    setRoleCookie(user.role ?? 'user');
                     clearPendingCredentials();
 
                     set({
@@ -233,14 +271,38 @@ export const useAuthStore = create<AuthState>()(
             register: async (data: RegisterData) => {
                 set({ isLoading: true, error: null });
                 try {
-                    await api.post('/auth/register', data);
+                    // Step 1: create user account with vendor role
+                    const regResp = await api.post('/auth/register', {
+                        email: data.email,
+                        password: data.password,
+                        first_name: data.firstName,
+                        last_name: data.lastName,
+                        role: 'vendor',
+                    });
+                    const payload = regResp.data.data ?? regResp.data;
+
+                    // Step 2: authenticate with returned tokens
+                    if (payload?.access_token) {
+                        setAccessToken(payload.access_token);
+                        if (payload.refresh_token) setRefreshToken(payload.refresh_token);
+                        setAuthCookie();
+                        setRoleCookie('vendor');
+
+                        // Step 3: create vendor profile
+                        try {
+                            await api.post('/vendors/register', {
+                                business_name: data.vendorName,
+                                contact_email: data.contactEmail || data.email,
+                            });
+                        } catch {
+                            // vendor profile creation failed — not fatal
+                        }
+                    }
+
                     set({ isLoading: false });
                     return true;
                 } catch (error) {
-                    set({
-                        error: getApiError(error),
-                        isLoading: false,
-                    });
+                    set({ error: getApiError(error), isLoading: false });
                     return false;
                 }
             },
@@ -248,8 +310,8 @@ export const useAuthStore = create<AuthState>()(
             logout: async () => {
                 try {
                     await api.post('/auth/logout');
-                } catch (error) {
-                    // Ignore logout errors
+                } catch {
+                    // Ignore logout errors — always clear local state
                 } finally {
                     clearTokens();
                     clearAuthCookie();
@@ -267,10 +329,11 @@ export const useAuthStore = create<AuthState>()(
             fetchProfile: async () => {
                 set({ isLoading: true });
                 try {
-                    const response = await api.get('/vendors/me');
+                    // Fetch vendor profile from the correct endpoint
+                    const response = await api.get('/vendors/profile/me');
+                    const vendorData = response.data.data ?? response.data;
                     set({
-                        user: response.data.user,
-                        vendor: response.data.vendor,
+                        vendor: _mapVendor(vendorData),
                         isLoading: false,
                     });
                 } catch (error) {
@@ -284,9 +347,10 @@ export const useAuthStore = create<AuthState>()(
             updateProfile: async (data: Partial<Vendor>) => {
                 set({ isLoading: true, error: null });
                 try {
-                    const response = await api.put('/vendors/me', data);
+                    const response = await api.put('/vendors/profile/me', data);
+                    const vendorData = response.data.data ?? response.data;
                     set({
-                        vendor: { ...get().vendor!, ...response.data },
+                        vendor: _mapVendor(vendorData),
                         isLoading: false,
                     });
                 } catch (error) {

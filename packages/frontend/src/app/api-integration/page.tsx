@@ -26,6 +26,7 @@ export default function ApiIntegrationPage() {
     const [newKeyName, setNewKeyName] = useState('');
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [hasMounted, setHasMounted] = useState(false);
+    const vendorAny = vendor as unknown as Record<string, unknown> | null;
 
     useEffect(() => { setHasMounted(true); }, []);
 
@@ -95,18 +96,18 @@ export default function ApiIntegrationPage() {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${vendor?.apiEnabled ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${vendorAny?.apiEnabled ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
                             <Shield className="h-5 w-5" />
                         </div>
                         <div>
                             <h3 className="font-semibold text-gray-900">API Access</h3>
                             <p className="text-sm text-gray-500">
-                                {vendor?.apiEnabled ? 'API access is enabled for your account' : 'API access is not yet enabled — contact support'}
+                                {vendorAny?.apiEnabled ? 'API access is enabled for your account' : 'API access is not yet enabled — contact support'}
                             </p>
                         </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${vendor?.apiEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
-                        {vendor?.apiEnabled ? 'Active' : 'Inactive'}
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${vendorAny?.apiEnabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                        {vendorAny?.apiEnabled ? 'Active' : 'Inactive'}
                     </span>
                 </div>
             </div>

@@ -6,7 +6,7 @@
 
 ## Overview
 
-Event-AI connects clients with verified vendors through an intelligent marketplace. The platform uses AI agents to auto-plan events, recommend vendors, and manage bookings — all backed by a production-grade FastAPI backend with real-time notifications and semantic search.
+Event-AI connects clients with verified vendors through an intelligent marketplace. The platform uses AI agents to auto-plan events, recommend vendors, and manage bookings — all backed by a production-grade FastAPI backend with real-time notifications, semantic search, and a multi-layer prompt injection firewall.
 
 ---
 
@@ -15,50 +15,62 @@ Event-AI connects clients with verified vendors through an intelligent marketpla
 ```
 packages/
 ├── backend/                     # FastAPI REST API (Python + uv)
-├── frontend/                    # Vendor portal (Next.js)
-├── user/                        # Customer portal (Next.js) — SSE chat UI
-├── admin/                       # Admin portal (Next.js — planned)
+├── frontend/                    # Vendor portal (Next.js 15)
+├── user/                        # Customer portal (Next.js 15) — SSE chat UI
+├── admin/                       # Admin portal (Next.js 15)
 ├── agentic_event_orchestrator/  # AI agent service (FastAPI + OpenAI Agents SDK)
-└── ui/                          # Shared component library (planned)
+└── ui/                          # Shared component library
 ```
 
 **Stack:**
-- **Backend:** Python 3.13 · FastAPI · SQLModel · asyncpg · Alembic · Structlog · uv (port 5000)
-- **Database:** Neon Serverless PostgreSQL (pgvector enabled)
-- **Auth:** JWT (HS256) · Google OAuth2 · bcrypt
-- **Frontend:** Next.js 14 · Tailwind CSS · Zustand · Axios
-- **AI:** OpenAI Agents SDK · Gemini 2.5 Flash · Mem0 · sklearn · SSE streaming · 7-layer injection firewall
+- **Backend:** Python 3.12+ · FastAPI · SQLModel · asyncpg · Alembic · Structlog · uv
+- **Database:** Neon Serverless PostgreSQL · pgvector (semantic search)
+- **Auth:** Custom JWT (HS256) · Google OAuth2 · bcrypt · httpOnly cookies
+- **Frontend:** Next.js 15 · TypeScript (strict) · Tailwind CSS · shadcn/ui · React Query
+- **AI:** OpenAI Agents SDK · Gemini via LiteLLM · Mem0 · SSE streaming · 7-layer injection firewall · pgvector RAG
+
+### Port Map
+
+| Service | Port |
+|---------|------|
+| Backend API | 5000 (dev) / 5000 (Docker) |
+| User portal | 3003 (dev) / 3000 (Docker) |
+| Vendor portal | 3002 (dev) / 3001 (Docker) |
+| Admin portal | 3004 |
+| AI orchestrator | 8000 |
 
 ---
 
-## Docker
+## Project Status
 
-```bash
-# Production — build and start both services
-docker compose up --build
+| Phase | Module | Status |
+|-------|--------|--------|
+| 1 | Database Setup | ✅ Complete |
+| 1 | FastAPI JWT Auth | ✅ Complete |
+| 1 | User Auth + Google OAuth | ✅ Complete |
+| 2 | Vendor Marketplace | ✅ Complete |
+| 2 | Event Management | ✅ Complete |
+| 3 | Booking System | ✅ Complete |
+| 3 | Notification System | ✅ Complete |
+| 3 | Real-Time SSE | ✅ Complete |
+| 4 | **RAG & Semantic Search** | ✅ **Complete** |
+| 4 | **AI Agent Chat** | ✅ **Complete** (core + security) |
+| 4 | Admin Dashboard | ✅ Complete |
+| 5 | AI Agent Security Hardening | 🔄 In Progress (tasks 5e–5g + tests) |
+| 5 | Notification System Polish | 🔄 In Progress (tasks 4–10) |
 
-# Development — hot reload
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+### What's Remaining
 
-# Backend only
-docker compose up backend --build
+**AI Agent Security Hardening** (`ai-agent-chat` spec, tasks 5e–5g + 13–17):
+- Agent instruction hardening + LlamaFirewall AlignmentCheck per-handoff validator
+- TruLens RAG faithfulness evaluation
+- CI security testing with Promptfoo + Garak
+- Comprehensive unit + integration test suites for tools, guardrails, and chat endpoints
 
-# Run migrations inside container
-docker compose exec backend alembic upgrade head
-
-# Seed database
-docker compose exec backend \
-  sh -c "SEED_ADMIN_EMAIL=admin@eventai.pk SEED_ADMIN_PASSWORD=AdminPass123! \
-         python -m src.scripts.seed"
-```
-
-**Services:**
-- Backend → `http://localhost:5000`
-- Frontend → `http://localhost:3001`
-
-**Image sizes (approximate):**
-- Backend: ~120MB (`python:3.13-slim` + venv, no build tools)
-- Frontend: ~80MB (`node:20-alpine` + Next.js standalone output)
+**Notification System Polish** (`notification-system` spec, tasks 4–10):
+- Parent task status sync (all sub-tasks are implemented)
+- Rate limiting decorator verification
+- SSE evict-oldest overflow strategy
 
 ---
 
@@ -68,83 +80,61 @@ docker compose exec backend \
 
 - [uv](https://docs.astral.sh/uv/) — Python package manager
 - [pnpm](https://pnpm.io/) — Node package manager
-- Neon DB account (or local PostgreSQL)
+- Neon DB account (or local PostgreSQL with pgvector)
 - Google Cloud Console project (for OAuth)
 
-### Backend
+### 1. Install dependencies
 
 ```bash
-cd packages/backend
-
-# Install dependencies
-uv sync
-
-# Copy and configure environment
-cp .env.example .env
-# Edit .env with your DATABASE_URL, JWT_SECRET_KEY, GOOGLE_CLIENT_ID, etc.
-
-# Run database migrations
-uv run alembic upgrade head
-
-# Seed initial data (admin user + event categories)
-SEED_ADMIN_EMAIL=admin@eventai.pk SEED_ADMIN_PASSWORD=AdminPass123! \
-  uv run python -m src.scripts.seed
-
-# Start the server (port 5000)
-uv run uvicorn src.main:app --host 0.0.0.0 --port 5000 --reload
+pnpm install
+cd packages/backend && uv sync
+cd packages/agentic_event_orchestrator && uv sync
 ```
 
-### AI Agent Service
+### 2. Configure environment
+
+```bash
+cp packages/backend/.env.example packages/backend/.env
+cp packages/agentic_event_orchestrator/.env.example packages/agentic_event_orchestrator/.env
+# Fill in DATABASE_URL, JWT_SECRET_KEY, GEMINI_API_KEY, etc.
+```
+
+### 3. Start database and run migrations
+
+```bash
+pnpm db:up          # start Postgres (Docker)
+pnpm db:migrate     # apply all migrations
+```
+
+### 4. Start all services
+
+```bash
+pnpm dev            # starts all packages concurrently
+```
+
+Or start individually:
+
+```bash
+pnpm dev:backend    # FastAPI backend → http://localhost:5000
+pnpm dev:user       # Customer portal → http://localhost:3003
+pnpm dev:frontend   # Vendor portal   → http://localhost:3002
+pnpm dev:admin      # Admin portal    → http://localhost:3004
+```
+
+Start the AI service separately:
 
 ```bash
 cd packages/agentic_event_orchestrator
-
-# Install dependencies
-uv sync
-
-# Configure environment (copy from .env.example)
-# Required: GEMINI_API_KEY, DATABASE_URL, APP_DATABASE_URL
-
-# Run database migrations (creates ai schema + 4 tables)
-uv run alembic upgrade head
-
-# Start the AI service (port 8000)
 uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Frontend (Customer Portal)
-
-```bash
-cd packages/user
-pnpm install
-# Set AI_SERVICE_URL=http://localhost:8000 in .env
-pnpm dev
-# → http://localhost:3000
-# Chat at http://localhost:3000/chat
-```
-
-### Frontend (Vendor Portal)
-
-```bash
-cd packages/frontend
-
-# Install dependencies
-pnpm install
-
-# Configure environment
-echo "NEXT_PUBLIC_API_URL=http://localhost:5000/api/v1" > .env
-
-# Start dev server
-pnpm dev
-# → http://localhost:3001
 ```
 
 ### Running Tests
 
 ```bash
 cd packages/backend
-uv run pytest -v                              # all tests
+uv run pytest                          # all tests (241 currently passing)
 uv run pytest tests/test_event_routes.py -v  # specific file
+uv run pytest -k "test_semantic" -v    # by name pattern
 uv run pytest --cov=src --cov-report=term    # with coverage
 ```
 
@@ -166,7 +156,7 @@ Base URL: `http://localhost:5000/api/v1`
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/auth/register` | Register with email/password → JWT pair |
-| `POST` | `/auth/login` | OAuth2 form-encoded login (Swagger UI) |
+| `POST` | `/auth/login` | OAuth2 form-encoded login |
 | `POST` | `/users/login` | JSON login (frontend portal) |
 | `GET`  | `/auth/me` | Authenticated user profile |
 | `POST` | `/auth/refresh` | Rotate refresh token |
@@ -188,6 +178,8 @@ Base URL: `http://localhost:5000/api/v1`
 | `PATCH` | `/vendors/me/bookings/{id}/status` | Confirm or reject booking |
 | `GET`  | `/public_vendors/` | Public vendor search (trigram + ILIKE) |
 | `GET`  | `/public_vendors/suggestions` | Autocomplete suggestions |
+| `GET`  | `/public_vendors/semantic` | Semantic (vector) search via Gemini embeddings |
+| `GET`  | `/public_vendors/search?mode=keyword\|semantic\|hybrid` | Unified search (default: hybrid) |
 | `GET`  | `/public_vendors/{id}` | Public vendor profile |
 | `GET`  | `/categories/` | List event categories |
 
@@ -235,13 +227,99 @@ Base URL: `http://localhost:5000/api/v1`
 | `DELETE` | `/notifications/{id}` | Delete single notification |
 | `GET`  | `/notifications/preferences` | List notification preferences |
 | `PUT`  | `/notifications/preferences/{type}` | Upsert preference |
-| `GET`  | `/sse/stream?token=<jwt>` | Real-time SSE stream |
+| `GET`  | `/sse/stream` | Real-time SSE stream |
 
-### Health
+### Admin
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET`  | `/health/db` | DB health (pool stats, pgvector, latency) |
+| `GET`  | `/admin/stats` | Platform stats (users, vendors, bookings, revenue) |
+| `GET`  | `/admin/vendors` | Paginated vendor list with filters |
+| `PATCH` | `/admin/vendors/{id}/status` | Approve / reject / suspend vendor |
+| `GET`  | `/admin/users` | Paginated user list with filters |
+| `POST` | `/admin/embeddings/backfill` | Trigger background embedding backfill |
+| `GET`  | `/admin/chat/sessions` | Paginated AI chat session log |
+| `GET`  | `/admin/chat/sessions/{id}/messages` | Messages for a session |
+| `GET`  | `/admin/chat/feedback/stats` | Aggregate feedback per agent |
+
+### AI Agent (port 8000)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/ai/chat` | Non-streaming chat |
+| `POST` | `/api/v1/ai/chat/stream` | SSE token-by-token streaming |
+| `POST` | `/api/v1/ai/feedback` | Thumbs up/down per message |
+| `DELETE` | `/api/v1/ai/memory/{user_id}` | GDPR right-to-forget |
+
+---
+
+## RAG & Semantic Search
+
+Vendor profiles are embedded using Gemini `text-embedding-004` (768 dimensions) and stored in pgvector. Embeddings are automatically created/updated when vendors are approved and deleted when they are rejected or suspended.
+
+**Search modes** (via `GET /public_vendors/search?mode=...`):
+
+| Mode | Description |
+|------|-------------|
+| `keyword` | Trigram + ILIKE text search (no embedding required) |
+| `semantic` | pgvector cosine similarity via Gemini embeddings |
+| `hybrid` | Weighted combination: 30% trigram + 70% semantic (default) |
+
+**Admin backfill** — trigger a background re-embedding of all active vendors:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/embeddings/backfill \
+  -H "Authorization: Bearer <admin_token>"
+```
+
+Or for a single vendor:
+
+```bash
+curl -X POST http://localhost:3001/api/v1/admin/embeddings/backfill \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"vendor_id": "<uuid>"}'
+```
+
+---
+
+## AI Agent Chat
+
+The AI service (`packages/agentic_event_orchestrator`) is a production-grade FastAPI application with a multi-agent pipeline and 7-layer security stack.
+
+### Agent Pipeline
+
+```
+User request (HTTP/SSE)
+       ↓
+  TriageAgent          ← sole entry point; classifies intent
+       ↓
+  EventPlannerAgent  ←→  VendorDiscoveryAgent
+                              ↓
+                        BookingAgent
+                              ↓
+                        OrchestratorAgent
+```
+
+Built with OpenAI Agents SDK + Gemini via LiteLLM (`gemini/gemini-3-flash-preview`).
+
+### Security Stack
+
+- **Layer 1:** YAML blocklist exact match
+- **Layer 2:** Regex patterns (6 threat categories: DIRECT_INJECTION, SYSTEM_PROMPT_EXTRACTION, ROLE_ESCALATION, INDIRECT_INJECTION, CONTEXT_OVERFLOW, TOOL_ABUSE)
+- **Layer 3:** Heuristics (char density, token repetition, homoglyphs, zero-width chars)
+- **Sandwich defense:** Canary token injection + MINJA protection on history turns
+- **OutputLeakDetector:** Canary token + stack trace + internal tool name detection
+- **SDK-native guardrails:** `@input_guardrail` (blocking) + `@output_guardrail`
+- **Mem0:** Per-user persistent memory across sessions
+
+### Chat Features
+
+- Token-by-token SSE streaming with agent badge updates
+- Thumbs up/down feedback per message
+- Session persistence via `localStorage`
+- PII redaction on output (email, phone, CNIC patterns)
+- Rate limiting: 30 req/min per user
 
 ---
 
@@ -266,10 +344,10 @@ GOOGLE_CLIENT_SECRET=<from Google Cloud Console>
 GOOGLE_REDIRECT_URI=http://localhost:5000/api/v1/auth/google/callback
 
 # Frontend
-FRONTEND_URL=http://localhost:3001
-CORS_ORIGINS=["http://localhost:3000","http://localhost:3001","http://localhost:3002"]
+FRONTEND_URL=http://localhost:3003
+CORS_ORIGINS=http://localhost:3002,http://localhost:3003,http://localhost:3004,http://localhost:3000
 
-# AI
+# Gemini (for embeddings)
 GEMINI_API_KEY=<from Google AI Studio>
 
 # Seed script (optional)
@@ -277,84 +355,17 @@ SEED_ADMIN_EMAIL=admin@eventai.pk
 SEED_ADMIN_PASSWORD=<min 12 chars>
 ```
 
-### `packages/frontend/.env`
+### `packages/agentic_event_orchestrator/.env`
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000/api/v1
+GEMINI_API_KEY=<from Google AI Studio>
+GEMINI_MODEL=gemini/gemini-3-flash-preview
+AI_SERVICE_API_KEY=<32+ byte random token>
+SERVICE_SECRET=<must match AGENT_SERVICE_SECRET in backend .env>
+BACKEND_API_URL=http://localhost:3001/api/v1
+CORS_ORIGINS=http://localhost:3003
+MEM0_API_KEY=<from mem0.ai>
 ```
-
----
-
-## Google OAuth2 Setup
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
-2. Create an **OAuth 2.0 Client ID** (Web application)
-3. Add Authorized redirect URI: `http://localhost:5000/api/v1/auth/google/callback`
-4. Copy Client ID and Client Secret to `packages/backend/.env`
-
----
-
-## Project Status
-
-| Phase | Module | Status |
-|-------|--------|--------|
-| 1 | Database Setup (003) | ✅ Complete |
-| 1 | FastAPI JWT Auth (013) | ✅ Complete |
-| 1 | User Auth + Google OAuth (002) | ✅ Complete |
-| 2 | Vendor Marketplace (004) | ✅ Complete |
-| 2 | Event Management (005) | ✅ Complete |
-| 3 | Booking System (009) | ✅ Complete |
-| 3 | Notification System (010) | ✅ Complete |
-| 3 | Real-Time SSE (008) | ✅ Complete |
-| 4 | RAG & Semantic Search (011) | 📋 Spec ready |
-| 4 | **AI Agent Chat (006)** | ✅ **Complete** |
-| 4 | AI Event Planner (007) | ⚠️ Covered by AI Agent Chat |
-| 5 | Vendor Portal — full (012) | ⚠️ Login only |
-
-### AI Agent Chat — What's Built
-
-The AI service (`packages/agentic_event_orchestrator`) is now a production-grade FastAPI application:
-
-**Agent Pipeline**
-- `TriageAgent` → `EventPlannerAgent` → `VendorDiscoveryAgent` → `BookingAgent` → `OrchestratorAgent`
-- Built with OpenAI Agents SDK + Gemini 2.5 Flash via OpenAI-compatible endpoint
-- `RunConfig(tracing_disabled=True)` — no OpenAI tracing calls, works with Gemini key
-
-**Security — 7-Layer Prompt Injection Firewall**
-- Layer 1: YAML blocklist exact match
-- Layer 2: Regex patterns (6 threat categories: DIRECT_INJECTION, SYSTEM_PROMPT_EXTRACTION, ROLE_ESCALATION, INDIRECT_INJECTION, CONTEXT_OVERFLOW, TOOL_ABUSE)
-- Layer 3: Heuristics (char density, token repetition, homoglyphs, zero-width chars)
-- Layer 4: sklearn TF-IDF + LogisticRegression classifier (no torch/CUDA)
-- Layer 5: Semantic similarity via sentence-transformers (optional)
-- Layer 6: N-gram perplexity scoring
-- Layer 7: Context coherence check
-- SDK-native `@input_guardrail` (blocking — zero tokens on blocked input) + `@output_guardrail`
-- Sandwich defense context builder (MINJA protection)
-- Canary token + `OutputLeakDetector`
-- Tool-level `@tool_input_guardrail` + `@tool_output_guardrail` on booking tools
-
-**Endpoints**
-- `POST /api/v1/ai/chat` — non-streaming
-- `POST /api/v1/ai/chat/stream` — SSE token-by-token streaming
-- `POST /api/v1/ai/feedback` — thumbs up/down per message
-- `DELETE /api/v1/ai/memory/{user_id}` — GDPR right-to-forget
-- `GET /api/v1/admin/chat/sessions` — paginated session log viewer
-- `GET /api/v1/admin/chat/sessions/{id}/messages` — message history
-- `GET /api/v1/admin/chat/feedback/stats` — aggregate feedback
-- `POST /api/v1/admin/guardrails/test` — live injection probe battery
-
-**Database** — 4 new tables in `ai` schema: `chat_sessions`, `messages`, `agent_executions`, `message_feedback`
-
-**Frontend** — `packages/user` updated with SSE streaming, token-by-token rendering, agent badges, thumbs up/down feedback, session persistence
-
-**To start the AI service:**
-```bash
-cd packages/agentic_event_orchestrator
-uv sync
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-See [`.kiro/specs/ai-agent-chat/`](.kiro/specs/ai-agent-chat/) for full spec.
 
 ---
 
@@ -373,8 +384,47 @@ uv run alembic revision --autogenerate -m "description"
 uv run alembic downgrade -1
 
 # View migration history
-uv run alembic history
+uv run alembic history --verbose
 ```
+
+**Note:** pgvector must be enabled before the first migration:
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+---
+
+## Key Commands
+
+```bash
+# Install all dependencies
+pnpm install
+cd packages/backend && uv sync
+cd packages/agentic_event_orchestrator && uv sync
+
+# Database lifecycle
+pnpm db:up            # start Postgres (Docker)
+pnpm db:down          # stop Postgres
+pnpm db:migrate       # apply migrations
+pnpm db:migrate:dev   # apply migrations (dev)
+pnpm db:studio        # open DB GUI
+pnpm db:reset         # wipe and reseed local DB
+
+# Code quality
+pnpm lint
+pnpm format
+pnpm typecheck
+cd packages/backend && uv run pytest
+```
+
+---
+
+## Google OAuth2 Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
+2. Create an **OAuth 2.0 Client ID** (Web application)
+3. Add Authorized redirect URI: `http://localhost:5000/api/v1/auth/google/callback`
+4. Copy Client ID and Client Secret to `packages/backend/.env`
 
 ---
 
@@ -388,8 +438,8 @@ The platform follows a strict [constitution](.specify/memory/constitution.md) th
 - **No scattered config:** All settings via Pydantic `BaseSettings` + `@lru_cache`
 - **Async-first:** All DB operations use `AsyncSession` + `asyncpg`
 - **Structured logging:** Structlog JSON throughout — no `print()`
-- **Test coverage:** ≥80% on services, ≥70% on routes — `uv run pytest`
 - **Event-driven:** Domain events persisted to `domain_events` table via event bus
+- **TDD:** Tests written alongside implementation — zero real LLM/MCP calls in tests
 
 ---
 
@@ -407,4 +457,4 @@ fix(auth): handle expired Google OAuth state token
 test(events): add duplicate event integration tests
 ```
 
-All PRs require passing CI (lint + type-check + tests) and at least 1 approval.
+PRs target `develop`, never `main` directly. All CI checks (lint, typecheck, pytest) must pass before merge.
